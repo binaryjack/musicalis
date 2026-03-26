@@ -1,0 +1,37 @@
+.nav {
+  display: flex;
+  gap: 8px;
+}
+
+.nav.vertical {
+  flex-direction: column;
+  padding: 12px;
+  background: var(--color-bg-secondary);
+  border-right: 1px solid var(--color-border);
+  min-width: 180px;
+  max-height: 100vh;
+  overflow-y: auto;
+}
+
+.nav.horizontal {
+  flex-direction: row;
+  padding: 8px 12px;
+  background: var(--color-bg-secondary);
+  border-bottom: 1px solid var(--color-border);
+  justify-content: flex-start;
+  overflow-x: auto;
+}
+
+.navItem {
+  width: 100%;
+  justify-content: flex-start;
+}
+
+.nav.horizontal .navItem {
+  width: auto;
+  flex-shrink: 0;
+}
+
+.icon {
+  margin-right: 6px;
+}

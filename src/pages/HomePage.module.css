@@ -1,0 +1,104 @@
+.container {
+  padding: 32px;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.hero {
+  text-align: center;
+  margin-bottom: 48px;
+  padding: 48px 32px;
+  background: linear-gradient(135deg, var(--color-primary-light) 0%, rgba(37, 99, 235, 0.05) 100%);
+  border-radius: 12px;
+}
+
+.hero h1 {
+  margin-bottom: 12px;
+  font-size: 32px;
+}
+
+.hero p {
+  font-size: 16px;
+  margin-bottom: 24px;
+}
+
+.projects {
+  margin-bottom: 48px;
+}
+
+.projects h2 {
+  margin-bottom: 16px;
+  font-size: 20px;
+}
+
+.projectGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 16px;
+}
+
+.projectCard {
+  padding: 16px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-bg-secondary);
+  transition: all 0.2s ease-out;
+}
+
+.projectCard:hover {
+  border-color: var(--color-primary);
+  box-shadow: var(--shadow-md);
+  transform: translateY(-2px);
+}
+
+.projectCard h3 {
+  margin-bottom: 8px;
+  font-size: 16px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.metadata {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--color-text-secondary);
+  margin-bottom: 12px;
+}
+
+.actions {
+  display: flex;
+  gap: 8px;
+}
+
+.info {
+  padding: 24px;
+  background: var(--color-bg-secondary);
+  border-radius: 8px;
+}
+
+.info h2 {
+  margin-bottom: 16px;
+  font-size: 18px;
+}
+
+@media (max-width: 768px) {
+  .container {
+    padding: 16px;
+  }
+
+  .hero {
+    padding: 24px 16px;
+    margin-bottom: 32px;
+  }
+
+  .hero h1 {
+    font-size: 24px;
+  }
+
+  .projectGrid {
+    grid-template-columns: 1fr;
+  }
+}

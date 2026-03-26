@@ -1,0 +1,43 @@
+.staffCanvas {
+  height: 100%;
+  width: 100%;
+  position: relative;
+  background: #ffffff;
+  overflow: auto;
+}
+
+.container {
+  min-height: 400px;
+  padding: 2rem;
+  position: relative;
+}
+
+.container.designMode {
+  cursor: crosshair;
+}
+
+.container.playbackMode {
+  cursor: default;
+}
+
+.loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 200px;
+  color: #6b7280;
+  font-size: 1rem;
+}
+
+.error {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 200px;
+  color: #ef4444;
+  font-size: 1rem;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  border-radius: 8px;
+  margin: 1rem;
+}

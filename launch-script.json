@@ -1,0 +1,36 @@
+{
+  "name": "musicalist-launch",
+  "version": "1.0.0",
+  "description": "Musicalist launch script with development utilities",
+  "scripts": {
+    "dev": "vite --host --open",
+    "build": "tsc -b && vite build",
+    "start": "vite preview --host --open",
+    "compile": "tsc -b",
+    "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
+    "fix": "eslint . --ext ts,tsx --fix",
+    "clean": "rimraf dist node_modules/.vite",
+    "reset": "npm run clean && npm install",
+    "launch": "npm run compile && npm run dev",
+    "launch:build": "npm run build && npm run start",
+    "launch:clean": "npm run reset && npm run launch",
+    "test": "echo \"No tests specified yet\" && exit 0",
+    "type-check": "tsc --noEmit",
+    "deps": "npm list --depth=0"
+  },
+  "launch-info": {
+    "description": "Comprehensive launch script for Musicalist development",
+    "commands": {
+      "npm run launch": "Compile TypeScript and start dev server",
+      "npm run launch:build": "Full build and preview production version", 
+      "npm run launch:clean": "Clean install and fresh start",
+      "npm run dev": "Development server with hot reload",
+      "npm run compile": "TypeScript compilation only",
+      "npm run fix": "Auto-fix ESLint issues"
+    },
+    "ports": {
+      "dev": "5173",
+      "preview": "4173"
+    }
+  }
+}

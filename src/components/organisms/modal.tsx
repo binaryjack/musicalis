@@ -1,0 +1,3 @@
+
+export type ModalProps = any;
+export const Modal = function(props: ModalProps) { if (!props.isOpen) return null; return (<div className="modal-overlay" onClick={props.onClose}><div className="modal" onClick={e => e.stopPropagation()}><div className="modal__header"><h2>{props.title}</h2><button onClick={props.onClose}>Close</button></div><div className="modal__content">{props.children}</div></div></div>); };

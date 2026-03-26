@@ -1,0 +1,43 @@
+.wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.label {
+  font-weight: 600;
+  font-size: 0.875rem;
+  color: #333;
+}
+
+.container {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.picker {
+  width: 50px;
+  height: 50px;
+  border: 2px solid #ccc;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.picker:hover {
+  border-color: #007bff;
+}
+
+.picker:focus {
+  outline: none;
+  border-color: #007bff;
+  box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.1);
+}
+
+.code {
+  font-family: monospace;
+  font-size: 0.875rem;
+  color: #333;
+  min-width: 80px;
+}
