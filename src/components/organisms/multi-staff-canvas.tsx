@@ -10,6 +10,7 @@ export interface MultiStaffCanvasProps {
   height?: number;
   playheadPosition?: number;
   selectedStaffId?: string;
+  darkMode?: boolean;
   onStaffClick?: (staffId: string, position: { x: number; y: number; pitch?: string; beat?: number }) => void;
   onNoteClick?: (noteId: string, staffId: string) => void;
   onNoteDelete?: (noteId: string, staffId: string) => void;
@@ -44,7 +45,9 @@ export const MultiStaffCanvas = function(props: MultiStaffCanvasProps) {
   const calculateBeatFromX = (x: number, staffStart: number, staffWidth: number, beatsPerMeasure: number = 4): number => {
     const relativeX = x - staffStart;
     const beatWidth = staffWidth / beatsPerMeasure;
-    return Math.max(0, Math.floor(relativeX / beatWidth));
+    const beat = Math.max(0, relativeX / beatWidth);
+    // Snap to quarter beats
+    return Math.round(beat * 4) / 4;
   };
   
   const calculatePlayheadScrollState = () => {
@@ -88,6 +91,19 @@ export const MultiStaffCanvas = function(props: MultiStaffCanvasProps) {
     
     const context = renderer.getContext();
     
+    // Apply dark mode styling
+    if (props.darkMode) {
+      // Set dark background for the entire canvas
+      const svg = containerRef.current.querySelector('svg');
+      if (svg) {
+        svg.style.backgroundColor = '#1a1a1a';
+      }
+      
+      // Set light colors for staff lines and symbols
+      context.setStrokeStyle('#e0e0e0');
+      context.setFillStyle('#f0f0f0');
+    }
+    
     props.staffs.forEach((staff, staffIndex) => {
       if (!staff.visible) return;
       
@@ -102,8 +118,8 @@ export const MultiStaffCanvas = function(props: MultiStaffCanvasProps) {
       
       stave.setContext(context).draw();
       
-      // Add staff label
-      context.setFillStyle('#333');
+      // Add staff label with dark mode support
+      context.setFillStyle(props.darkMode ? '#e0e0e0' : '#333');
       context.setFont('12px Arial');
       context.fillText(staff.name, 15, yPosition - 10);
       
@@ -125,6 +141,9 @@ export const MultiStaffCanvas = function(props: MultiStaffCanvasProps) {
           const colorRule = note.colorId ? staff.colorMapping.colors.find(c => c.id === note.colorId) : null;
           if (colorRule) {
             vexNote.setStyle({ fillStyle: colorRule.hex, strokeStyle: colorRule.hex });
+          } else if (props.darkMode) {
+            // Default light color for dark mode
+            vexNote.setStyle({ fillStyle: '#f0f0f0', strokeStyle: '#f0f0f0' });
           }
           
           return vexNote;
@@ -139,7 +158,7 @@ export const MultiStaffCanvas = function(props: MultiStaffCanvasProps) {
       
       // Add staff selection highlight
       if (props.selectedStaffId === staff.id) {
-        (context as any).setStrokeStyle('#007bff');
+        (context as any).setStrokeStyle(props.darkMode ? '#4a9eff' : '#007bff');
         (context as any).setLineWidth(3);
         // Draw manual selection rectangle using path methods
         (context as any).beginPath();
@@ -150,12 +169,19 @@ export const MultiStaffCanvas = function(props: MultiStaffCanvasProps) {
     
     // Draw playhead
     if (props.playheadPosition !== undefined) {
-      const { visualPlayheadX } = calculatePlayheadScrollState();
+      // Get time signature from first staff or default to 4/4
+      const timeSignature = props.staffs[0]?.timeSignature || '4/4';
+      const [beatsPerMeasure] = timeSignature.split('/').map(Number);
+      
+      const measureWidth = (props.width || 800) - 40; // Account for margins
+      const beatWidth = measureWidth / beatsPerMeasure;
+      const playheadX = 20 + (props.playheadPosition * beatWidth);
+      
       context.setStrokeStyle('#ff0000');
       context.setLineWidth(2);
       context.beginPath();
-      context.moveTo(visualPlayheadX, 20);
-      context.lineTo(visualPlayheadX, totalHeight + 20);
+      context.moveTo(playheadX, 20);
+      context.lineTo(playheadX, totalHeight + 20);
       context.stroke();
     }
     
@@ -174,7 +200,11 @@ export const MultiStaffCanvas = function(props: MultiStaffCanvasProps) {
         if (clickedStaff && props.onStaffClick) {
           const staffY = 40 + (clickedStaffIndex * (staffHeight + staffSpacing));
           const pitch = calculatePitchFromY(y, staffY, clickedStaff.clef);
-          const beat = calculateBeatFromX(x, 10, (props.width || 800) - 20);
+          
+          // Use time signature from clicked staff for beat calculation
+          const timeSignature = clickedStaff.timeSignature || '4/4';
+          const [beatsPerMeasure] = timeSignature.split('/').map(Number);
+          const beat = calculateBeatFromX(x, 10, (props.width || 800) - 20, beatsPerMeasure);
           
           props.onStaffClick(clickedStaff.id, { x, y, pitch, beat });
         }
@@ -201,12 +231,14 @@ export const MultiStaffCanvas = function(props: MultiStaffCanvasProps) {
       style={{ 
         width: '100%', 
         height: props.staffs.length * (staffHeight + staffSpacing) + 80,
-        border: '1px solid #ccc',
-        backgroundColor: '#fff',
+        border: props.darkMode ? '1px solid #444' : '1px solid #ccc',
+        backgroundColor: props.darkMode ? '#1a1a1a' : '#fff',
         overflow: 'auto',
         position: 'relative',
         transform: `translateX(-${viewportScrollX}px)`,
-        transition: 'transform 0.1s ease-out'
+        transition: 'transform 0.1s ease-out',
+        margin: 0,
+        padding: 0
       }}
     />
   );

@@ -25,7 +25,7 @@ import { musicNote, noteDuration } from '../types/musicTypes';
 import styles from './EditorPage.module.css';
 
 interface EditorPageProps {
-  projectId: string;
+  projectId?: string;
 }
 
 export const EditorPage = ({ projectId }: EditorPageProps) => {
@@ -55,6 +55,13 @@ export const EditorPage = ({ projectId }: EditorPageProps) => {
   const [showColorMapping, setShowColorMapping] = useState(false);
   const [videoExporting, setVideoExporting] = useState(false);
   const [exportProgress, setExportProgress] = useState(0);
+  const [selectedAudioQuality, setSelectedAudioQuality] = useState({
+    id: 'mid',
+    name: 'Mid Quality (44.1kHz)',
+    sampleRate: 44100,
+    bitRate: 256,
+    memoryImpactMB: 5.2
+  });
   
   // Initialize project if projectId provided or create a new one
   useEffect(() => {
@@ -77,7 +84,7 @@ export const EditorPage = ({ projectId }: EditorPageProps) => {
   }, [projectId, project]);
   
   // Local editor state (not related to project data)
-  const [selectedNote, setSelectedNote] = useState<MusicNote | null>(null);
+  const [selectedNote, setSelectedNote] = useState<MusicNote | null>('C4' as MusicNote);
   const [selectedDuration, setSelectedDuration] = useState<NoteDuration>('quarter');
   const [velocity, setVelocity] = useState<number>(80);
   const [playbackRate, setPlaybackRate] = useState<number>(1);
@@ -87,6 +94,11 @@ export const EditorPage = ({ projectId }: EditorPageProps) => {
     pitch: note.pitch,
     duration: note.duration
   })) || [];
+
+  // Load notes into playback engine when they change
+  useEffect(() => {
+    playback.loadNotes(notes);
+  }, [playback, notes]);
 
   if (project.isLoading) {
     return <div>Loading project...</div>;
@@ -100,23 +112,26 @@ export const EditorPage = ({ projectId }: EditorPageProps) => {
     return <div>No project loaded...</div>;
   }
 
-  // Load notes into playback engine when they change
-  useEffect(() => {
-    playback.loadNotes(notes);
-  }, [playback, notes]);
-
   // Note editing handlers
   const handleStaffClick = (position: any) => {
-    if (position.pitch && position.beat !== undefined) {
+    console.log('Staff clicked:', position, 'Selected note:', selectedNote, 'Is design mode:', isDesignMode);
+    if (position.pitch && position.beat !== undefined && selectedNote) {
       const newNote = {
         pitch: position.pitch as MusicNote,
         duration: selectedDuration,
         position: position.beat,
         velocity: velocity / 127
       };
+      console.log('Adding note:', newNote);
       project.addNote(newNote);
       // Preview the note
-      playback.playNote(newNote.pitch, newNote.duration, newNote.velocity);
+      try {
+        playback.playNote(newNote.pitch, newNote.duration, newNote.velocity);
+      } catch (error) {
+        console.error('Error playing note preview:', error);
+      }
+    } else {
+      console.warn('Cannot add note - missing data:', { position, selectedNote, isDesignMode });
     }
   };
   
@@ -226,11 +241,12 @@ export const EditorPage = ({ projectId }: EditorPageProps) => {
       {/* Audio Quality Selector */}
       <div className={styles.section}>
         <AudioQualitySelector
+          selectedQuality={selectedAudioQuality}
           onQualityChange={(quality) => {
             console.log('Audio quality changed:', quality);
+            setSelectedAudioQuality(quality);
             // Update audio engine quality
           }}
-
         />
       </div>
       
@@ -238,10 +254,15 @@ export const EditorPage = ({ projectId }: EditorPageProps) => {
         <NoteSelector
           selectedNote={selectedNote}
           onSelectNote={(note: MusicNote | null) => {
+            console.log('Note selected:', note);
             setSelectedNote(note);
             // Play preview note when selected
             if (note) {
-              playback.playNote(note, selectedDuration, velocity / 127);
+              try {
+                playback.playNote(note, selectedDuration, velocity / 127);
+              } catch (error) {
+                console.error('Error playing preview note:', error);
+              }
             }
           }}
           disabled={!isDesignMode}
@@ -301,10 +322,22 @@ export const EditorPage = ({ projectId }: EditorPageProps) => {
             currentTime={playback.currentTime}
             duration={playback.duration}
             playbackRate={playbackRate}
-            onPlay={playback.play}
-            onPause={playback.pause}
-            onStop={playback.stop}
-            onSeek={playback.seek}
+            onPlay={() => {
+              console.log('Play clicked, notes:', notes);
+              playback.play();
+            }}
+            onPause={() => {
+              console.log('Pause clicked');
+              playback.pause();
+            }}
+            onStop={() => {
+              console.log('Stop clicked');
+              playback.stop();
+            }}
+            onSeek={(position: number) => {
+              console.log('Seek to:', position);
+              playback.seek(position);
+            }}
             onRateChange={setPlaybackRate}
           />
         </div>
@@ -365,12 +398,16 @@ export const EditorPage = ({ projectId }: EditorPageProps) => {
               project={project.currentProject}
               playheadPosition={0}
               onStaffClick={(staffId: string, position: any) => {
+                console.log('MultiStaffCanvas click:', staffId, position, 'Design mode:', isDesignMode);
                 setSelectedStaffIndex(0); // Mock implementation
-                if (isDesignMode && selectedNote) {
+                if (isDesignMode) {
                   handleStaffClick(position);
+                } else {
+                  console.log('Not in design mode - cannot add notes');
                 }
               }}
               onNoteDelete={isDesignMode ? (noteId: string) => {
+                console.log('Deleting note:', noteId);
                 // Find the note index by parsing the noteId
                 const index = parseInt(noteId.replace('note-', ''));
                 if (index >= 0 && index < notes.length) {
