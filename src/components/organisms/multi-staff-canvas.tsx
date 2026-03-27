@@ -23,6 +23,7 @@ export interface MultiStaffCanvasProps {
 export const MultiStaffCanvas = function(props: MultiStaffCanvasProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const rendererRef = useRef<Renderer | null>(null);
+  const [dynamicWidth, setDynamicWidth] = useState(props.width || 800);
   const [playheadX, setPlayheadX] = useState(0);
   const [viewportScrollX, setViewportScrollX] = useState(0);
   const [isDragging, setIsDragging] = useState(false);
@@ -64,11 +65,26 @@ export const MultiStaffCanvas = function(props: MultiStaffCanvasProps) {
   useEffect(() => {
     if (!containerRef.current || !props.staffs.length) return;
     
+    // Calculate the maximum width needed for all staffs (considering different time signatures)
+    let maxWidth = 0;
+    props.staffs.forEach(staff => {
+      const measuresCount = staff.measuresCount || 4;
+      const [beatsPerMeasure] = staff.timeSignature.split('/').map(Number);
+      const measureWidth = fixedMeasureWidth * (beatsPerMeasure / 4);
+      const staffWidth = 40 + (measuresCount * measureWidth) + 100;
+      maxWidth = Math.max(maxWidth, staffWidth);
+    });
+    
+    const calculatedWidth = maxWidth;
+    const totalHeight = props.staffs.length * (staffHeight + staffSpacing);
+    
+    console.log('Dynamic canvas dimensions:', calculatedWidth, 'x', totalHeight + 40);
+    setDynamicWidth(calculatedWidth);
+    
     containerRef.current.innerHTML = '';
     
-    const totalHeight = props.staffs.length * (staffHeight + staffSpacing);
     const renderer = new Renderer(containerRef.current, Renderer.Backends.SVG);
-    renderer.resize(props.width || 800, totalHeight + 40);
+    renderer.resize(calculatedWidth, totalHeight + 40);
     rendererRef.current = renderer;
     
     const context = renderer.getContext();
@@ -91,7 +107,10 @@ export const MultiStaffCanvas = function(props: MultiStaffCanvasProps) {
       
       const yPosition = 40 + (staffIndex * (staffHeight + staffSpacing));
       const measuresPerStaff = staff.measuresCount || 4; // Use staff's measure count
-      const staffWidth = 20 + (measuresPerStaff * fixedMeasureWidth); // Dynamic staff width based on measures
+      // Calculate measure width based on time signature
+      const [beatsInMeasure] = staff.timeSignature.split('/').map(Number);
+      const adjustedMeasureWidth = fixedMeasureWidth * (beatsInMeasure / 4); // Adjust width based on beats per measure
+      const staffWidth = 20 + (measuresPerStaff * adjustedMeasureWidth); // Dynamic staff width based on measures
       const stave = new Stave(10, yPosition, staffWidth);
       
       // Add clef and time signature
@@ -103,13 +122,15 @@ export const MultiStaffCanvas = function(props: MultiStaffCanvasProps) {
       stave.setContext(context).draw();
       
       // Draw bar lines to separate measures (removed old beat separator code)
+      const [beatsInThisMeasure] = staff.timeSignature.split('/').map(Number);
+      const thisMeasureWidth = fixedMeasureWidth * (beatsInThisMeasure / 4); // Adjust for time signature
       
       context.setStrokeStyle(props.darkMode ? '#e0e0e0' : '#000');
       context.setLineWidth(1);
       
       // Only draw measure separators, not beat separators
       for (let measureIndex = 1; measureIndex < measuresPerStaff; measureIndex++) {
-        const barLineX = 20 + (measureIndex * fixedMeasureWidth);
+        const barLineX = 20 + (measureIndex * thisMeasureWidth);
         context.beginPath();
         context.moveTo(barLineX, yPosition);
         context.lineTo(barLineX, yPosition + 80);
@@ -147,7 +168,10 @@ export const MultiStaffCanvas = function(props: MultiStaffCanvasProps) {
           return vexNote;
         });
         
-        const voice = new Voice({ numBeats: 4, beatValue: 4 });
+        const voice = new Voice({ 
+          numBeats: parseInt(staff.timeSignature.split('/')[0]), 
+          beatValue: parseInt(staff.timeSignature.split('/')[1]) 
+        });
         voice.addTickables(vexNotes);
         
         new Formatter().joinVoices([voice]).format([voice], (props.width || 800) - 100);
@@ -319,13 +343,14 @@ export const MultiStaffCanvas = function(props: MultiStaffCanvasProps) {
         if (props.playheadPosition !== undefined) {
           console.log('Starting drag mode');
           setIsDragging(true);
-          // Calculate position properly using time signature and staff width
+          // Calculate position properly using time signature and dynamic staff width
           if (props.onPlayheadDrag) {
             const timeSignature = props.staffs[0]?.timeSignature || '4/4';
             const [beatsPerMeasure] = timeSignature.split('/').map(Number);
-            const measureWidth = (props.width || 800) - 40; // Account for margins (same as playhead drawing)
-            const beatWidth = measureWidth / beatsPerMeasure;
-            const newPosition = Math.max(0, (x - 20) / beatWidth); // Convert mouse x to beat position
+            const firstStaffMeasures = props.staffs[0]?.measuresCount || 4;
+            const totalBeats = firstStaffMeasures * beatsPerMeasure;
+            const beatWidth = fixedMeasureWidth / beatsPerMeasure;
+            const newPosition = Math.max(0, Math.min(totalBeats, (x - 20) / beatWidth));
             console.log('Beat width:', beatWidth, 'Calculated position:', newPosition);
             props.onPlayheadDrag(newPosition);
           }
@@ -423,12 +448,13 @@ export const MultiStaffCanvas = function(props: MultiStaffCanvasProps) {
         const rect = containerDiv.getBoundingClientRect();
         const x = event.clientX - rect.left;
         
-        // Calculate position properly using time signature and staff width
+        // Calculate position properly using time signature and dynamic staff width
         const timeSignature = props.staffs[0]?.timeSignature || '4/4';
         const [beatsPerMeasure] = timeSignature.split('/').map(Number);
-        const measureWidth = (props.width || 800) - 40; // Account for margins
-        const beatWidth = measureWidth / beatsPerMeasure;
-        const newPosition = Math.max(0, Math.min(beatsPerMeasure * 4, (x - 20) / beatWidth)); // Limit to 4 measures
+        const firstStaffMeasures = props.staffs[0]?.measuresCount || 4;
+        const totalBeats = firstStaffMeasures * beatsPerMeasure;
+        const beatWidth = fixedMeasureWidth / beatsPerMeasure;
+        const newPosition = Math.max(0, Math.min(totalBeats, (x - 20) / beatWidth));
         
         console.log('Mouse X:', x, 'Beat width:', beatWidth, 'New position:', newPosition);
         props.onPlayheadDrag(newPosition);
@@ -469,7 +495,7 @@ export const MultiStaffCanvas = function(props: MultiStaffCanvasProps) {
       ref={containerRef}
       onContextMenu={(e) => e.preventDefault()}
       style={{ 
-        width: '100%', 
+        width: dynamicWidth,
         height: props.staffs.length * (staffHeight + staffSpacing) + 80,
         border: props.darkMode ? '1px solid #444' : '1px solid #ccc',
         backgroundColor: props.darkMode ? '#1a1a1a' : '#fff',
