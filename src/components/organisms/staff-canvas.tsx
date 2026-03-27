@@ -87,43 +87,111 @@ export const StaffCanvas = function(props: StaffCanvasProps) {
       // Render voice
       voice.draw(context, stave);
       
-      // Add click handlers to notes if onNoteClick is provided
-      if (props.onNoteClick && containerRef.current) {
-        const noteElements = containerRef.current.querySelectorAll('.vf-note');
-        noteElementsRef.current = Array.from(noteElements) as SVGElement[];
-        
-        noteElements.forEach((element, index) => {
-          (element as HTMLElement).style.cursor = 'pointer';
-          element.addEventListener('click', (event) => {
-            event.stopPropagation(); // Prevent staff click
-            props.onNoteClick?.(index);
-          });
-          
-          // Right-click to delete note
-          element.addEventListener('contextmenu', (event) => {
-            event.preventDefault();
-            event.stopPropagation();
-            props.onNoteDelete?.(index);
-          });
-        });
-      }
-      
-      // Add staff click handler for adding notes
-      if (props.onStaffClick && containerRef.current) {
+      // Add data attributes to note elements for easier tracking
+      if (containerRef.current) {
         const svgElement = containerRef.current.querySelector('svg');
         if (svgElement) {
-          svgElement.style.cursor = 'crosshair';
-          svgElement.addEventListener('click', (event) => {
-            const rect = svgElement.getBoundingClientRect();
-            const x = event.clientX - rect.left;
-            const y = event.clientY - rect.top;
-            
-            // Calculate approximate pitch and beat position from click coordinates
-            const pitch = calculatePitchFromY(y, stave.getYForLine(0));
-            const beat = calculateBeatFromX(x, stave.getX(), stave.getWidth());
-            
-            props.onStaffClick?.({ x, y, pitch, beat });
+          // VexFlow creates groups for notes - let's find them and add attributes
+          const allGroups = Array.from(svgElement.querySelectorAll('g'));
+          console.log('All groups found:', allGroups.length);
+          
+          // Filter groups that likely contain notes (have paths or ellipses)
+          const noteGroups = allGroups.filter(group => {
+            return group.querySelector('path, ellipse, rect, circle');
           });
+          console.log('Note-like groups found:', noteGroups.length);
+          
+          // Add data attributes to help with click detection
+          noteGroups.forEach((group, index) => {
+            if (index < (props.notes?.length || 0)) {
+              group.setAttribute('data-note-index', index.toString());
+              group.style.cursor = 'pointer';
+              
+              // Add hover effects for better UX
+              group.addEventListener('mouseenter', () => {
+                group.style.opacity = '0.7';
+              });
+              group.addEventListener('mouseleave', () => {
+                group.style.opacity = '1';
+              });
+            }
+          });
+        }
+      }
+      
+      // Add click handlers with proper VexFlow element selection
+      if (containerRef.current) {
+        // VexFlow creates path elements for notes, not elements with .vf-note class
+        const svgElement = containerRef.current.querySelector('svg');
+        
+        if (svgElement) {
+          // Remove existing listeners
+          const clonedSvg = svgElement.cloneNode(true);
+          svgElement.parentNode?.replaceChild(clonedSvg, svgElement);
+          
+          const newSvg = containerRef.current.querySelector('svg');
+          if (newSvg) {
+            // Set cursor style
+            newSvg.style.cursor = props.onStaffClick ? 'crosshair' : 'default';
+            
+            // Add single click handler that detects what was clicked
+            newSvg.addEventListener('click', (event) => {
+              const target = event.target as SVGElement;
+              console.log('SVG click details:');
+              console.log('- Target:', target);
+              console.log('- Tag name:', target.tagName);
+              
+              // Check if clicked element or its parent has a data-note-index
+              let noteElement = target.closest('[data-note-index]') as SVGElement;
+              
+              if (noteElement && props.onNoteClick) {
+                const noteIndex = parseInt(noteElement.getAttribute('data-note-index') || '-1');
+                console.log('- Note clicked, index:', noteIndex);
+                
+                if (noteIndex >= 0 && noteIndex < (props.notes?.length || 0)) {
+                  event.stopPropagation();
+                  props.onNoteClick(noteIndex);
+                  return;
+                }
+              }
+              
+              // If not a note click and staff click is enabled
+              if (props.onStaffClick) {
+                const rect = newSvg.getBoundingClientRect();
+                const x = event.clientX - rect.left;
+                const y = event.clientY - rect.top;
+                
+                console.log('Staff click at:', x, y);
+                
+                // Calculate approximate pitch and beat position from click coordinates
+                const pitch = calculatePitchFromY(y, stave.getYForLine(0));
+                const beat = calculateBeatFromX(x, stave.getX(), stave.getWidth());
+                
+                props.onStaffClick({ x, y, pitch, beat });
+              }
+            });
+            
+            // Add right-click handler for note deletion
+            if (props.onNoteDelete) {
+              newSvg.addEventListener('contextmenu', (event) => {
+                const target = event.target as SVGElement;
+                console.log('Right-click on:', target.tagName);
+                
+                // Check if clicked element or its parent has a data-note-index
+                let noteElement = target.closest('[data-note-index]') as SVGElement;
+                
+                if (noteElement) {
+                  event.preventDefault();
+                  const noteIndex = parseInt(noteElement.getAttribute('data-note-index') || '-1');
+                  console.log('Note right-clicked for deletion, index:', noteIndex);
+                  
+                  if (noteIndex >= 0 && noteIndex < (props.notes?.length || 0)) {
+                    props.onNoteDelete?.(noteIndex);
+                  }
+                }
+              });
+            }
+          }
         }
       }
     }
@@ -132,10 +200,7 @@ export const StaffCanvas = function(props: StaffCanvasProps) {
       if (rendererRef.current) {
         rendererRef.current = null;
       }
-      // Clean up event listeners
-      noteElementsRef.current.forEach(element => {
-        element.replaceWith(element.cloneNode(true));
-      });
+      // Cleanup will be handled by DOM replacement
       noteElementsRef.current = [];
     };
   }, [props.notes, props.width, props.height, props.project]);

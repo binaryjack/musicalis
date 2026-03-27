@@ -1,0 +1,36 @@
+{
+  "preset": "ts-jest",
+  "testEnvironment": "jsdom",
+  "roots": ["<rootDir>/src"],
+  "testMatch": [
+    "**/__tests__/**/*.{ts,tsx}",
+    "**/?(*.)+(spec|test).{ts,tsx}"
+  ],
+  "transform": {
+    "^.+\\.(ts|tsx)$": ["ts-jest", {
+      "tsconfig": "tsconfig.test.json"
+    }]
+  },
+  "moduleNameMapper": {
+    "\\.css$": "identity-obj-proxy"
+  },
+  "setupFilesAfterEnv": ["<rootDir>/src/tests/setup.ts"],
+  "collectCoverageFrom": [
+    "src/**/*.{ts,tsx}",
+    "!src/**/*.d.ts",
+    "!src/**/*.test.{ts,tsx}",
+    "!src/**/*.spec.{ts,tsx}",
+    "!src/tests/**/*",
+    "!src/main.tsx",
+    "!src/vite-env.d.ts"
+  ],
+  "coverageReporters": ["text", "lcov", "html"],
+  "coverageThreshold": {
+    "global": {
+      "branches": 95,
+      "functions": 95,
+      "lines": 95,
+      "statements": 95
+    }
+  }
+}

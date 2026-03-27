@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { useProject } from '../hooks/useProject';
 import { usePlayback } from '../hooks/usePlayback';
 import { StaffCanvas } from '../components/organisms/staff-canvas';
@@ -15,10 +15,8 @@ export const EditorPage = ({ projectId }: EditorPageProps) => {
   
   // Local editor state
   const [mode, setMode] = useState<'design' | 'playback'>('design');
-  const [selectedNote, setSelectedNote] = useState<MusicNote | null>(null);
   const [selectedDuration, setSelectedDuration] = useState<NoteDuration>('quarter');
   const [velocity, setVelocity] = useState<number>(80);
-  const [playbackRate, setPlaybackRate] = useState<number>(1);
 
   // Initialize project
   useEffect(() => {
@@ -40,6 +38,17 @@ export const EditorPage = ({ projectId }: EditorPageProps) => {
     }
   }, [projectId, project]);
 
+  // Convert project notes to format expected by StaffCanvas
+  const notes = project.currentProject?.notes.map(note => ({
+    pitch: note.pitch,
+    duration: note.duration
+  })) || [];
+
+  // Load notes into playback engine when they change
+  useEffect(() => {
+    playback.loadNotes(notes);
+  }, [playback, notes]);
+
   if (project.isLoading) {
     return <div style={{ padding: '20px' }}>Loading project...</div>;
   }
@@ -51,17 +60,6 @@ export const EditorPage = ({ projectId }: EditorPageProps) => {
   if (!project.currentProject) {
     return <div style={{ padding: '20px' }}>No project loaded...</div>;
   }
-
-  // Convert project notes to format expected by StaffCanvas
-  const notes = project.currentProject.notes.map(note => ({
-    pitch: note.pitch,
-    duration: note.duration
-  }));
-
-  // Load notes into playback engine when they change
-  useEffect(() => {
-    playback.loadNotes(notes);
-  }, [playback, notes]);
 
   // Note editing handlers
   const handleStaffClick = (position: { x: number; y: number; pitch?: string; beat?: number }) => {
@@ -79,14 +77,22 @@ export const EditorPage = ({ projectId }: EditorPageProps) => {
   };
   
   const handleNoteDelete = (noteIndex: number) => {
-    project.removeNote(noteIndex);
+    console.log('Deleting note at index:', noteIndex);
+    const noteToDelete = project.currentProject?.notes[noteIndex];
+    if (noteToDelete) {
+      console.log('Note to delete:', noteToDelete);
+      project.removeNote(noteIndex);
+      // Show visual feedback
+      console.log('Note deleted successfully');
+    }
   };
 
   const handleNoteClick = (index: number) => {
+    console.log('Note clicked at index:', index);
     const note = notes[index];
     if (note) {
+      console.log('Playing note:', note);
       playback.playNote(note.pitch, note.duration, velocity / 127);
-      setSelectedNote(note.pitch);
       setSelectedDuration(note.duration);
     }
   };
