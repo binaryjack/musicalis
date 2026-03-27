@@ -1,6 +1,26 @@
 
 import { Button } from "../atoms/button";
+import type { NoteDuration } from "../../types/musicTypes";
 
-export type DurationSelectorProps = any;
+export interface DurationSelectorProps {
+  selectedDuration?: NoteDuration;
+  onSelectDuration?: (duration: NoteDuration) => void;
+  disabled?: boolean;
+}
 
-export const DurationSelector = function(props: DurationSelectorProps) { const durations = ["Whole", "Half", "Quarter", "Eighth", "16th"]; return (<div className="duration-selector">{durations.map(d => <Button key={d} variant={props.value === d ? "primary" : "secondary"} onClick={() => props.onChange(d)}>{d}</Button>)}</div>); };
+export const DurationSelector = function(props: DurationSelectorProps) {
+  const durations: NoteDuration[] = ["whole", "half", "quarter", "eighth", "sixteenth"];
+  return (
+    <div className="duration-selector">
+      {durations.map(d => 
+        <Button 
+          key={d} 
+          variant={props.selectedDuration === d ? "primary" : "secondary"} 
+          onClick={() => props.onSelectDuration?.(d)}
+        >
+          {d}
+        </Button>
+      )}
+    </div>
+  );
+};

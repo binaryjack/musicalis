@@ -1,7 +1,7 @@
 ﻿import { useState } from "react";
 import { Provider } from "react-redux";
 import { store } from "./store/store";
-import { EditorPage } from "./pages";
+import { EditorPage } from "./pages/EditorPageSimple";
 import { HomePage } from "./pages";
 import { SettingsPage } from "./pages";
 import "./App.css";

@@ -1,6 +1,14 @@
 
 
-export type ButtonProps = any;
+export interface ButtonProps {
+  children: React.ReactNode;
+  onClick?: () => void;
+  variant?: 'primary' | 'secondary' | 'danger' | 'success';
+  disabled?: boolean;
+  type?: 'button' | 'submit' | 'reset';
+  className?: string;
+  size?: 'small' | 'medium' | 'large';
+}
 
 export const Button = function(props: ButtonProps) {
   return (

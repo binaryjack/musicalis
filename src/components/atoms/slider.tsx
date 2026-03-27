@@ -1,6 +1,15 @@
 
 
-export type SliderProps = any;
+export interface SliderProps {
+  min?: number;
+  max?: number;
+  value?: number;
+  onChange?: (value: number) => void;
+  disabled?: boolean;
+  step?: number;
+  className?: string;
+  showValue?: boolean;
+}
 
 export const Slider = function(props: SliderProps) {
   return (
@@ -14,7 +23,7 @@ export const Slider = function(props: SliderProps) {
           step={props.step || 1}
           value={props.value}
           disabled={props.disabled}
-          onChange={(e) => props.onChange(parseFloat(e.target.value))}
+          onChange={(e) => props.onChange?.(parseFloat(e.target.value))}
         />
       </div>
       {props.showValue && <span className="slider__value">{props.value}</span>}
