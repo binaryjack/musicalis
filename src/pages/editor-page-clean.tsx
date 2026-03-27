@@ -7,6 +7,7 @@ import { Dropdown } from '../components/atoms/dropdown';
 import { BpmControl } from '../components/atoms/bpm-control';
 import { AddStaffButton } from '../components/atoms/add-staff-button';
 import { TimeSignatureControl } from '../components/atoms/time-signature-control';
+import { ConfirmModal } from '../components/atoms/confirm-modal';
 import { MenuBar } from '../components/molecules/menu-bar';
 import { TransportBar } from '../components/molecules/transport-bar';
 import { MultiStaffCanvas } from '../components/organisms/multi-staff-canvas';
@@ -36,10 +37,13 @@ export const EditorPage = () => {
       visible: true,
       muted: false,
       volume: 0.8,
-      instrument: 'piano'
+      instrument: 'piano',
+      measuresCount: 4 // Start with 4 measures
     }
   ]);
   const [selectedStaffId, setSelectedStaffId] = useState<string>('staff-1');
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [barToDelete, setBarToDelete] = useState<{staffId: string, barIndex: number} | null>(null);
 
   // Initialize time signature from first staff
   useEffect(() => {
@@ -244,6 +248,44 @@ export const EditorPage = () => {
     playback.seek(newPosition);
   };
 
+  const handleAddBar = (staffId: string, afterBarIndex: number) => {
+    console.log('Adding bar after index', afterBarIndex, 'for staff', staffId);
+    setStaffs(prevStaffs => 
+      prevStaffs.map(staff => 
+        staff.id === staffId 
+          ? { ...staff, measuresCount: (staff.measuresCount || 4) + 1 }
+          : staff
+      )
+    );
+  };
+
+  const handleRemoveBar = (staffId: string, barIndex: number) => {
+    console.log('Remove bar requested for staff', staffId, 'bar', barIndex);
+    // Show confirmation modal
+    setBarToDelete({ staffId, barIndex });
+    setShowDeleteModal(true);
+  };
+
+  const confirmDeleteBar = () => {
+    if (barToDelete) {
+      console.log('Confirming delete bar', barToDelete.barIndex, 'from staff', barToDelete.staffId);
+      setStaffs(prevStaffs => 
+        prevStaffs.map(staff => 
+          staff.id === barToDelete.staffId 
+            ? { ...staff, measuresCount: Math.max(1, (staff.measuresCount || 4) - 1) }
+            : staff
+        )
+      );
+    }
+    setBarToDelete(null);
+    setShowDeleteModal(false);
+  };
+
+  const cancelDeleteBar = () => {
+    setBarToDelete(null);
+    setShowDeleteModal(false);
+  };
+
   if (project.isLoading) {
     return <div style={{color: '#fff', padding: '20px'}}>Loading project...</div>;
   }
@@ -368,6 +410,8 @@ export const EditorPage = () => {
             darkMode={true}
             onStaffClick={handleStaffClick}
             onPlayheadDrag={handlePlayheadDrag}
+            onAddBar={handleAddBar}
+            onRemoveBar={handleRemoveBar}
             width={800}
             height={staffs.length * 140 + 100}
           />
@@ -430,6 +474,18 @@ export const EditorPage = () => {
           Notes: {project.currentProject?.notes?.length || 0} | Staffs: {staffs.length} | Mode: {mode}
         </span>
       </div>
+      
+      {/* Confirmation Modal */}
+      <ConfirmModal
+        isOpen={showDeleteModal}
+        onClose={cancelDeleteBar}
+        onConfirm={confirmDeleteBar}
+        title="Delete Bar"
+        message={`Are you sure you want to delete bar ${(barToDelete?.barIndex || 0) + 1}? This action cannot be undone.`}
+        confirmText="Delete"
+        cancelText="Cancel"
+        confirmButtonColor="#dc3545"
+      />
     </div>
   );
 };

@@ -45,6 +45,7 @@ export interface PianoStaff {
   muted: boolean;
   volume: number;
   instrument: string;
+  measuresCount?: number; // Number of measures in this staff
 }
 
 export interface Note {

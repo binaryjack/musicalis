@@ -16,6 +16,8 @@ export interface MultiStaffCanvasProps {
   onNoteDelete?: (noteId: string, staffId: string) => void;
   onNoteMove?: (noteId: string, staffId: string, newPosition: number) => void;
   onPlayheadDrag?: (newPosition: number) => void;
+  onAddBar?: (staffId: string, afterBarIndex: number) => void;
+  onRemoveBar?: (staffId: string, barIndex: number) => void;
 }
 
 export const MultiStaffCanvas = function(props: MultiStaffCanvasProps) {
@@ -24,8 +26,11 @@ export const MultiStaffCanvas = function(props: MultiStaffCanvasProps) {
   const [playheadX, setPlayheadX] = useState(0);
   const [viewportScrollX, setViewportScrollX] = useState(0);
   const [isDragging, setIsDragging] = useState(false);
+  const [hoveredAddBar, setHoveredAddBar] = useState<{staffId: string, barIndex: number} | null>(null);
+  const [hoveredRemoveBar, setHoveredRemoveBar] = useState<{staffId: string, barIndex: number} | null>(null);
   const staffHeight = 120;
   const staffSpacing = 20;
+  const fixedMeasureWidth = 180; // Fixed width per measure
   
   const calculatePlayheadScrollState = () => {
     const contentWidth = (props.width || 800) * 2; // Assuming 2x width for scrolling
@@ -85,7 +90,9 @@ export const MultiStaffCanvas = function(props: MultiStaffCanvasProps) {
       if (!staff.visible) return;
       
       const yPosition = 40 + (staffIndex * (staffHeight + staffSpacing));
-      const stave = new Stave(10, yPosition, (props.width || 800) - 20);
+      const measuresPerStaff = staff.measuresCount || 4; // Use staff's measure count
+      const staffWidth = 20 + (measuresPerStaff * fixedMeasureWidth); // Dynamic staff width based on measures
+      const stave = new Stave(10, yPosition, staffWidth);
       
       // Add clef and time signature
       stave.addClef(staff.clef).addTimeSignature(staff.timeSignature);
@@ -94,6 +101,20 @@ export const MultiStaffCanvas = function(props: MultiStaffCanvasProps) {
       }
       
       stave.setContext(context).draw();
+      
+      // Draw bar lines to separate measures (removed old beat separator code)
+      
+      context.setStrokeStyle(props.darkMode ? '#e0e0e0' : '#000');
+      context.setLineWidth(1);
+      
+      // Only draw measure separators, not beat separators
+      for (let measureIndex = 1; measureIndex < measuresPerStaff; measureIndex++) {
+        const barLineX = 20 + (measureIndex * fixedMeasureWidth);
+        context.beginPath();
+        context.moveTo(barLineX, yPosition);
+        context.lineTo(barLineX, yPosition + 80);
+        context.stroke();
+      }
       
       // Add staff label with dark mode support
       context.setFillStyle(props.darkMode ? '#e0e0e0' : '#333');
@@ -133,14 +154,78 @@ export const MultiStaffCanvas = function(props: MultiStaffCanvasProps) {
         voice.draw(context, stave);
       }
       
-      // Add staff selection highlight
-      if (props.selectedStaffId === staff.id) {
-        (context as any).setStrokeStyle(props.darkMode ? '#4a9eff' : '#007bff');
-        (context as any).setLineWidth(3);
-        // Draw manual selection rectangle using path methods
+      // Staff selection indication removed (no thick border)
+
+      // Draw measure bar lines (vertical lines separating complete measures, not beats)
+      (context as any).setStrokeStyle(props.darkMode ? '#888' : '#444');
+      (context as any).setLineWidth(1);
+      
+      // Draw bar lines between measures (not between beats)
+      for (let measureIndex = 1; measureIndex < measuresPerStaff; measureIndex++) {
+        const barLineX = 20 + (measureIndex * fixedMeasureWidth);
         (context as any).beginPath();
-        (context as any).rect(8, yPosition - 5, (props.width || 800) - 16, staffHeight - 10);
+        (context as any).moveTo(barLineX, yPosition + 20);
+        (context as any).lineTo(barLineX, yPosition + 80);
         (context as any).stroke();
+      }
+      
+      // Draw final bar line (double line at the end of all measures)
+      const finalBarX = 20 + (measuresPerStaff * fixedMeasureWidth);
+      (context as any).setLineWidth(2);
+      (context as any).beginPath();
+      (context as any).moveTo(finalBarX - 1, yPosition + 20);
+      (context as any).lineTo(finalBarX - 1, yPosition + 80);
+      (context as any).stroke();
+
+      // Draw measure controls at the END of the entire staff (not per beat)
+      const staffEndX = 20 + (measuresPerStaff * fixedMeasureWidth);
+      
+      console.log('Rendering buttons for staff:', staff.id, 'at staffEndX:', staffEndX, 'yPosition:', yPosition);
+      
+      // Add measure button (+ at end of staff)
+      const isAddHovered = hoveredAddBar?.staffId === staff.id;
+      const addButtonSize = isAddHovered ? 16 : 12;
+      const addButtonX = staffEndX + 10;
+      const addButtonY = yPosition + (staffHeight / 2);
+      
+      console.log('Add button at:', addButtonX, addButtonY, 'size:', addButtonSize, 'hovered:', isAddHovered);
+      
+      context.setFillStyle(props.darkMode ? (isAddHovered ? '#4a9eff' : '#666') : (isAddHovered ? '#007bff' : '#999'));
+      context.beginPath();
+      (context as any).arc(addButtonX, addButtonY, addButtonSize / 2, 0, Math.PI * 2);
+      context.fill();
+      
+      // + symbol
+      context.setStrokeStyle('#fff');
+      context.setLineWidth(2);
+      context.beginPath();
+      context.moveTo(addButtonX - 3, addButtonY);
+      context.lineTo(addButtonX + 3, addButtonY);
+      context.moveTo(addButtonX, addButtonY - 3);
+      context.lineTo(addButtonX, addButtonY + 3);
+      context.stroke();
+      
+      // Remove measure button (- at end of staff) - only show if more than 1 measure exists
+      if (measuresPerStaff > 1) {
+        const isRemoveHovered = hoveredRemoveBar?.staffId === staff.id;
+        const removeButtonSize = isRemoveHovered ? 14 : 10;
+        const removeButtonX = staffEndX + 35;
+        const removeButtonY = yPosition + (staffHeight / 2);
+        
+        console.log('Remove button at:', removeButtonX, removeButtonY, 'size:', removeButtonSize, 'hovered:', isRemoveHovered);
+        
+        context.setFillStyle(props.darkMode ? (isRemoveHovered ? '#ff6b6b' : '#666') : (isRemoveHovered ? '#dc3545' : '#999'));
+        context.beginPath();
+        (context as any).arc(removeButtonX, removeButtonY, removeButtonSize / 2, 0, Math.PI * 2);
+        context.fill();
+        
+        // - symbol
+        context.setStrokeStyle('#fff');
+        context.setLineWidth(2);
+        context.beginPath();
+        context.moveTo(removeButtonX - 3, removeButtonY);
+        context.lineTo(removeButtonX + 3, removeButtonY);
+        context.stroke();
       }
     });
     
@@ -150,7 +235,7 @@ export const MultiStaffCanvas = function(props: MultiStaffCanvasProps) {
       const timeSignature = props.staffs[0]?.timeSignature || '4/4';
       const [beatsPerMeasure] = timeSignature.split('/').map(Number);
       
-      const measureWidth = (props.width || 800) - 40; // Account for margins
+      const measureWidth = fixedMeasureWidth;
       const beatWidth = measureWidth / beatsPerMeasure;
       const playheadX = 20 + (props.playheadPosition * beatWidth);
       
@@ -183,9 +268,54 @@ export const MultiStaffCanvas = function(props: MultiStaffCanvasProps) {
         const y = event.clientY - rect.top;
         
         console.log('Relative coordinates:', x, y);
-        console.log('Current playhead position:', props.playheadPosition);
         
-        // Start dragging on any click in the staff area
+        // Check for bar control clicks first
+        let handleByBarControl = false;
+        
+        props.staffs.forEach((staff, staffIndex) => {
+          if (!staff.visible || handleByBarControl) return;
+          
+          const staffY = 40 + (staffIndex * (staffHeight + staffSpacing));
+          const measuresPerStaff = staff.measuresCount || 4;
+          const staffEndX = 20 + (measuresPerStaff * fixedMeasureWidth);
+          
+          // Check add button click (at end of staff)
+          const addButtonX = staffEndX + 10;
+          const addButtonY = staffY + (staffHeight / 2);
+          const addDistance = Math.sqrt((x - addButtonX) ** 2 + (y - addButtonY) ** 2);
+          
+          console.log('Add button click check:', { x, y, addButtonX, addButtonY, addDistance });
+          
+          if (addDistance < 15 && props.onAddBar) { // Increased hit area
+            console.log('Add measure clicked for staff:', staff.id);
+            props.onAddBar(staff.id, measuresPerStaff - 1); // Add after the last measure
+            handleByBarControl = true;
+            return;
+          }
+          
+          // Check remove button click (only if more than 1 measure)
+          if (measuresPerStaff > 1) {
+            const removeButtonX = staffEndX + 35;
+            const removeButtonY = staffY + (staffHeight / 2);
+            const removeDistance = Math.sqrt((x - removeButtonX) ** 2 + (y - removeButtonY) ** 2);
+            
+            console.log('Remove button click check:', { x, y, removeButtonX, removeButtonY, removeDistance });
+            
+            if (removeDistance < 15 && props.onRemoveBar) { // Increased hit area
+              console.log('Remove measure clicked for staff:', staff.id);
+              props.onRemoveBar(staff.id, measuresPerStaff - 1); // Remove the last measure
+              handleByBarControl = true;
+              return;
+            }
+          }
+        });
+        
+        // If bar control was clicked, don't handle as drag/staff click
+        if (handleByBarControl) {
+          return;
+        }
+        
+        // Handle playhead dragging
         if (props.playheadPosition !== undefined) {
           console.log('Starting drag mode');
           setIsDragging(true);
@@ -202,6 +332,57 @@ export const MultiStaffCanvas = function(props: MultiStaffCanvasProps) {
         }
       };
       
+      const handleMouseMove = (event: MouseEvent) => {
+        if (isDragging) return; // Don't handle hover during drag
+        
+        const rect = containerDiv.getBoundingClientRect();
+        const x = event.clientX - rect.left;
+        const y = event.clientY - rect.top;
+        
+        // Check for bar control hovers
+        let foundAddHover = null;
+        let foundRemoveHover = null;
+        
+        props.staffs.forEach((staff, staffIndex) => {
+          if (!staff.visible) return;
+          
+          const staffY = 40 + (staffIndex * (staffHeight + staffSpacing));
+          const measuresPerStaff = staff.measuresCount || 4;
+          const staffEndX = 20 + (measuresPerStaff * fixedMeasureWidth);
+          
+          // Check add button hover (at end of staff)
+          const addButtonX = staffEndX + 10;
+          const addButtonY = staffY + (staffHeight / 2);
+          const addDistance = Math.sqrt((x - addButtonX) ** 2 + (y - addButtonY) ** 2);
+          
+          console.log('Add button check:', { x, y, addButtonX, addButtonY, addDistance });
+          
+          if (addDistance < 15) { // Increased hit area
+            foundAddHover = { staffId: staff.id, barIndex: 0 };
+            console.log('Add button hovered!');
+          }
+          
+          // Check remove button hover - only if more than 1 measure
+          if (measuresPerStaff > 1) {
+            const removeButtonX = staffEndX + 35;
+            const removeButtonY = staffY + (staffHeight / 2);
+            const removeDistance = Math.sqrt((x - removeButtonX) ** 2 + (y - removeButtonY) ** 2);
+            
+            console.log('Remove button check:', { x, y, removeButtonX, removeButtonY, removeDistance });
+            
+            if (removeDistance < 15) { // Increased hit area
+              foundRemoveHover = { staffId: staff.id, barIndex: 0 };
+              console.log('Remove button hovered!');
+            }
+          }
+        });
+        
+        setHoveredAddBar(foundAddHover);
+        setHoveredRemoveBar(foundRemoveHover);
+        
+        console.log('Hover state updated:', { foundAddHover, foundRemoveHover });
+      };
+      
       const handleContextMenu = (event: MouseEvent) => {
         console.log('Context menu prevented');
         event.preventDefault();
@@ -210,10 +391,12 @@ export const MultiStaffCanvas = function(props: MultiStaffCanvasProps) {
       
       // Remove any existing listeners first
       containerDiv.removeEventListener('mousedown', handleMouseDown as any);
+      containerDiv.removeEventListener('mousemove', handleMouseMove as any);
       containerDiv.removeEventListener('contextmenu', handleContextMenu as any);
       
       // Add new listeners to container div
       containerDiv.addEventListener('mousedown', handleMouseDown);
+      containerDiv.addEventListener('mousemove', handleMouseMove);
       containerDiv.addEventListener('contextmenu', handleContextMenu);
       
       console.log('Event listeners attached to container div');
@@ -221,7 +404,7 @@ export const MultiStaffCanvas = function(props: MultiStaffCanvasProps) {
       console.log('No container div found');
     }
     
-  }, [props.staffs, props.width, props.playheadPosition, props.selectedStaffId, isDragging]);
+  }, [props.staffs, props.width, props.playheadPosition, props.selectedStaffId, isDragging, hoveredAddBar, hoveredRemoveBar]);
 
   // Separate effect for document-level drag handling
   useEffect(() => {

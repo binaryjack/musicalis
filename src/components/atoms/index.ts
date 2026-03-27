@@ -5,3 +5,5 @@ export * from "./label";
 export * from "./select";
 export * from "./slider";
 export * from "./time-signature-control";
+export * from "./modal";
+export * from "./confirm-modal";
