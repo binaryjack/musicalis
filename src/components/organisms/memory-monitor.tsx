@@ -4,6 +4,7 @@ import type { MemoryInfo } from '../../types/musicTypes';
 export interface MemoryManagerProps {
   onMemoryWarning?: (level: 'warning' | 'critical') => void;
   onCleanupRequested?: () => void;
+  'data-testid'?: string;
 }
 
 export const createMemoryManager = function() {
@@ -144,7 +145,9 @@ export const MemoryMonitor = function(props: MemoryManagerProps) {
   };
   
   return (
-    <div style={{
+    <div 
+      data-testid={props['data-testid']}
+      style={{
       position: 'fixed',
       top: 10,
       right: 10,

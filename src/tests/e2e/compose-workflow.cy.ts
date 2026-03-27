@@ -19,10 +19,12 @@ describe('compose-workflow', () => {
       cy.get('[data-testid="project-name-input"]').type(projectName);
       cy.get('[data-testid="create-project-confirm"]').click();
       
-      // Verify editor loaded
+      // Verify editor loaded with multi-staff interface
       cy.get('[data-testid="editor-page"]').should('be.visible');
       cy.get('[data-testid="project-title"]').should('contain', projectName);
-      cy.get('[data-testid="staff-canvas"]').should('be.visible');
+      cy.get('[data-testid="multi-staff-canvas"]').should('be.visible');
+      cy.get('[data-testid="memory-monitor"]').should('be.visible');
+      cy.get('[data-testid="responsive-layout"]').should('be.visible');
     });
 
     it('validates-empty-project-name', () => {
@@ -46,11 +48,15 @@ describe('compose-workflow', () => {
 
     it('adds-single-note-with-preview', () => {
       // Select note properties
-      cy.get('[data-testid="pitch-selector"]').select('C4');
+      cy.get('[data-testid="note-selector"]').select('C4');
       cy.get('[data-testid="duration-selector"]').select('quarter');
       
-      // Add note to canvas
-      cy.get('[data-testid="staff-canvas"]').click(200, 250);
+      // Verify staff manager shows multiple staves
+      cy.get('[data-testid="staff-manager"]').should('be.visible');
+      cy.get('[data-testid="staff-list"] .staff-item').should('have.length.at.least', 1);
+      
+      // Add note to multi-staff canvas
+      cy.get('[data-testid="multi-staff-canvas"]').click(200, 250);
       
       // Verify note added
       cy.get('[data-testid="note-list"]').should('contain', 'C4');
@@ -301,6 +307,119 @@ describe('compose-workflow', () => {
       composition.forEach(note => {
         cy.get('[data-testid="note-list"]').should('contain', note.pitch);
       });
+    });
+  });
+
+  context('video-export-workflow', () => {
+    beforeEach(() => {
+      // Create project with composition for export tests
+      cy.get('[data-testid="new-project-button"]').click();
+      cy.get('[data-testid="project-name-input"]').type('Video Export Test');
+      cy.get('[data-testid="create-project-confirm"]').click();
+      
+      // Add test composition
+      cy.get('[data-testid="note-selector"]').select('C4');
+      cy.get('[data-testid="duration-selector"]').select('quarter');
+      cy.get('[data-testid="multi-staff-canvas"]').click(200, 250);
+    });
+
+    it('opens-video-export-modal', () => {
+      // Open video export
+      cy.get('[data-testid="video-export-button"]').click();
+      cy.get('[data-testid="video-export-modal"]').should('be.visible');
+      
+      // Verify export controls
+      cy.get('[data-testid="video-export-controls"]').should('be.visible');
+      cy.get('[data-testid="quality-selector"]').should('be.visible');
+      cy.get('[data-testid="format-selector"]').should('be.visible');
+    });
+
+    it('configures-export-settings', () => {
+      cy.get('[data-testid="video-export-button"]').click();
+      
+      // Test quality settings
+      cy.get('[data-testid="quality-selector"]').select('hi-res');
+      cy.get('[data-testid="format-selector"]').select('mp4');
+      cy.get('[data-testid="resolution-selector"]').select('1080p');
+      
+      // Verify estimated file size updates
+      cy.get('[data-testid="estimated-size"]').should('contain', 'MB');
+      
+      // Start export (mock)
+      cy.get('[data-testid="start-export-button"]').click();
+      cy.get('[data-testid="export-progress"]').should('be.visible');
+    });
+
+    it('handles-export-progress', () => {
+      cy.get('[data-testid="video-export-button"]').click();
+      cy.get('[data-testid="start-export-button"]').click();
+      
+      // Verify progress tracking
+      cy.get('[data-testid="export-progress-bar"]').should('be.visible');
+      cy.get('[data-testid="progress-percentage"]').should('contain', '%');
+      cy.get('[data-testid="estimated-time"]').should('be.visible');
+      
+      // Test cancel functionality
+      cy.get('[data-testid="cancel-export-button"]').click();
+      cy.get('[data-testid="export-progress"]').should('not.exist');
+    });
+  });
+
+  context('memory-monitoring', () => {
+    beforeEach(() => {
+      cy.get('[data-testid="new-project-button"]').click();
+      cy.get('[data-testid="project-name-input"]').type('Memory Test');
+      cy.get('[data-testid="create-project-confirm"]').click();
+    });
+
+    it('displays-memory-usage', () => {
+      // Verify memory monitor
+      cy.get('[data-testid="memory-monitor"]').should('be.visible');
+      cy.get('[data-testid="memory-usage-bar"]').should('be.visible');
+      cy.get('[data-testid="memory-percentage"]').should('contain', '%');
+    });
+
+    it('shows-memory-warnings', () => {
+      // Simulate high memory usage (mock)
+      cy.window().then((win) => {
+        // Trigger memory warning through window property
+        win.dispatchEvent(new CustomEvent('memory-warning', { 
+          detail: { level: 'warning', usage: 85 } 
+        }));
+      });
+      
+      cy.get('[data-testid="memory-warning"]').should('be.visible');
+      cy.get('[data-testid="memory-warning"]').should('contain', 'High memory usage');
+    });
+  });
+
+  context('responsive-layout', () => {
+    it('adapts-to-mobile-viewport', () => {
+      // Test mobile layout
+      cy.viewport(375, 667); // iPhone SE
+      cy.get('[data-testid="new-project-button"]').click();
+      cy.get('[data-testid="project-name-input"]').type('Mobile Test');
+      cy.get('[data-testid="create-project-confirm"]').click();
+      
+      // Verify mobile constraints are applied
+      cy.get('[data-testid="mobile-warning-display"]').should('be.visible');
+      cy.get('[data-testid="responsive-layout"]').should('have.class', 'mobile-layout');
+      
+      // Verify sidebar is collapsible on mobile
+      cy.get('[data-testid="sidebar-toggle"]').should('be.visible');
+    });
+
+    it('adapts-to-desktop-viewport', () => {
+      // Test desktop layout
+      cy.viewport(1920, 1080); // Full HD
+      cy.get('[data-testid="new-project-button"]').click();
+      cy.get('[data-testid="project-name-input"]').type('Desktop Test');
+      cy.get('[data-testid="create-project-confirm"]').click();
+      
+      // Verify desktop layout features
+      cy.get('[data-testid="responsive-layout"]').should('have.class', 'desktop-layout');
+      cy.get('[data-testid="left-sidebar"]').should('be.visible');
+      cy.get('[data-testid="right-sidebar"]').should('be.visible');
     });
   });
 });

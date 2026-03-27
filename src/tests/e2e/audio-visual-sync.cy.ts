@@ -23,9 +23,9 @@ describe('audio-visual-sync', () => {
       ];
       
       melody.forEach(note => {
-        cy.get('[data-testid="pitch-selector"]').select(note.pitch);
+        cy.get('[data-testid="note-selector"]').select(note.pitch);
         cy.get('[data-testid="duration-selector"]').select(note.duration);
-        cy.get('[data-testid="staff-canvas"]').click(note.x, 250);
+        cy.get('[data-testid="multi-staff-canvas"]').click(note.x, 250);
       });
     });
 
@@ -34,9 +34,9 @@ describe('audio-visual-sync', () => {
       cy.get('[data-testid="play-button"]').click();
       cy.get('[data-testid="playback-status"]').should('contain', 'Playing');
       
-      // Verify playhead appears and moves
-      cy.get('[data-testid="playhead"]').should('be.visible');
-      cy.get('[data-testid="playhead"]').should('have.css', 'left', '0px');
+      // Verify playhead appears and moves on multi-staff canvas
+      cy.get('[data-testid="multi-staff-canvas"] [data-testid="playhead"]').should('be.visible');
+      cy.get('[data-testid="multi-staff-canvas"] [data-testid="playhead"]').should('have.css', 'left', '0px');
       
       // Wait for playhead movement
       cy.wait(1000);
@@ -426,7 +426,125 @@ describe('audio-visual-sync', () => {
       // Pause and verify all elements pause
       cy.get('[data-testid="pause-button"]').click();
       cy.get('[data-testid="waveform-display"]').should('not.have.class', 'animating');
-      cy.get('[data-testid="staff-canvas"] [data-note]').should('not.have.class', 'note-pulse');
+      cy.get('[data-testid="multi-staff-canvas"] [data-note]').should('not.have.class', 'note-pulse');
+    });
+  });
+
+  context('advanced-playhead-modes', () => {
+    beforeEach(() => {
+      // Add test composition
+      const melody = [
+        { pitch: 'C4', duration: 'quarter', x: 200 },
+        { pitch: 'D4', duration: 'quarter', x: 350 },
+        { pitch: 'E4', duration: 'half', x: 500 }
+      ];
+      
+      melody.forEach(note => {
+        cy.get('[data-testid="note-selector"]').select(note.pitch);
+        cy.get('[data-testid="duration-selector"]').select(note.duration);
+        cy.get('[data-testid="multi-staff-canvas"]').click(note.x, 250);
+      });
+    });
+
+    it('tests-free-movement-mode', () => {
+      // Set playhead to free movement mode
+      cy.get('[data-testid="playhead-mode-selector"]').select('free-movement');
+      
+      // Click to move playhead freely
+      cy.get('[data-testid="multi-staff-canvas"]').click(400, 250);
+      
+      // Verify playhead moved to clicked position
+      cy.get('[data-testid="playhead"]').then(($playhead) => {
+        const leftPosition = parseInt($playhead.css('left'), 10);
+        expect(leftPosition).to.be.approximately(400, 50);
+      });
+    });
+
+    it('tests-center-lock-mode', () => {
+      // Set playhead to center-lock mode
+      cy.get('[data-testid="playhead-mode-selector"]').select('center-lock');
+      
+      // Start playback
+      cy.get('[data-testid="play-button"]').click();
+      
+      // Verify playhead stays in center while content scrolls
+      cy.get('[data-testid="playhead"]').should('have.class', 'center-locked');
+      
+      // Verify canvas content scrolls instead
+      cy.wait(1000);
+      cy.get('[data-testid="multi-staff-canvas"]').should('have.attr', 'data-scroll-offset');
+    });
+
+    it('tests-end-boundary-mode', () => {
+      // Set playhead to end boundary mode
+      cy.get('[data-testid="playhead-mode-selector"]').select('end-boundary');
+      
+      // Start playback
+      cy.get('[data-testid="play-button"]').click();
+      
+      // Let it play to the end
+      cy.wait(3000);
+      
+      // Verify playhead stops at composition end
+      cy.get('[data-testid="playhead"]').should('have.class', 'at-boundary');
+      cy.get('[data-testid="playback-status"]').should('contain', 'Stopped');
+    });
+  });
+
+  context('multi-staff-visual-sync', () => {
+    beforeEach(() => {
+      // Create multi-staff composition
+      const staffConfigs = [
+        { notes: [{ pitch: 'C4', duration: 'quarter', x: 200 }] },
+        { notes: [{ pitch: 'E4', duration: 'quarter', x: 200 }] },
+        { notes: [{ pitch: 'G4', duration: 'quarter', x: 200 }] }
+      ];
+      
+      staffConfigs.forEach((staff, staffIndex) => {
+        // Select staff
+        cy.get('[data-testid="staff-manager"] .staff-item').eq(staffIndex).click();
+        
+        staff.notes.forEach(note => {
+          cy.get('[data-testid="note-selector"]').select(note.pitch);
+          cy.get('[data-testid="duration-selector"]').select(note.duration);
+          cy.get('[data-testid="multi-staff-canvas"]').click(note.x, 150 + (staffIndex * 120));
+        });
+      });
+    });
+
+    it('synchronizes-playback-across-all-staves', () => {
+      // Start playback
+      cy.get('[data-testid="play-button"]').click();
+      
+      // Verify all staves show synchronized playhead
+      cy.get('[data-testid="staff-manager"] .staff-item').each((_$staff, index) => {
+        cy.get(`[data-testid="staff-${index}-playhead"]`).should('be.visible');
+      });
+      
+      // Verify notes light up in sequence across staves
+      cy.wait(500);
+      cy.get('[data-testid="active-note"]').should('exist');
+    });
+
+    it('handles-staff-solo-and-mute', () => {
+      // Solo first staff
+      cy.get('[data-testid="staff-manager"] .staff-item').first().within(() => {
+        cy.get('[data-testid="solo-button"]').click();
+      });
+      
+      // Start playback
+      cy.get('[data-testid="play-button"]').click();
+      
+      // Verify only soloed staff is audible
+      cy.get('[data-testid="staff-manager"] .staff-item').first().should('have.class', 'soloed');
+      cy.get('[data-testid="staff-manager"] .staff-item').not(':first').should('have.class', 'muted');
+      
+      // Test mute functionality
+      cy.get('[data-testid="staff-manager"] .staff-item').first().within(() => {
+        cy.get('[data-testid="mute-button"]').click();
+      });
+      
+      cy.get('[data-testid="staff-manager"] .staff-item').first().should('have.class', 'muted');
     });
   });
 });

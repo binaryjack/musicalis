@@ -221,7 +221,7 @@ export const EditorPage = ({ projectId }: EditorPageProps) => {
       <h3>🎵 Composition Tools</h3>
       
       {/* Memory Monitor */}
-      <MemoryMonitor />
+      <MemoryMonitor data-testid="memory-monitor" />
       
       {/* Audio Quality Selector */}
       <div className={styles.section}>
@@ -316,9 +316,10 @@ export const EditorPage = ({ projectId }: EditorPageProps) => {
   return (
     <MobileConstraintsProvider>
       <ResponsiveLayout
+        data-testid="editor-page"
         headerContent={
           <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
-            <span>{project.currentProject?.name || 'Untitled Project'}</span>
+            <span data-testid="project-title">{project.currentProject?.name || 'Untitled Project'}</span>
             <div style={{
               padding: '4px 8px',
               backgroundColor: mode === 'design' ? '#28a745' : '#007bff',
@@ -359,6 +360,7 @@ export const EditorPage = ({ projectId }: EditorPageProps) => {
           {/* Main Canvas Area */}
           <div style={{ flex: 1, position: 'relative' }}>
             <MultiStaffCanvas
+              data-testid="multi-staff-canvas"
               staffs={staves}
               project={project.currentProject}
               playheadPosition={0}

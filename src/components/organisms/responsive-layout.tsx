@@ -5,6 +5,7 @@ export interface ResponsiveLayoutProps {
   sidebarContent?: React.ReactNode;
   headerContent?: React.ReactNode;
   footerContent?: React.ReactNode;
+  'data-testid'?: string;
 }
 
 export const ResponsiveLayout = function(props: ResponsiveLayoutProps) {
@@ -63,7 +64,7 @@ export const ResponsiveLayout = function(props: ResponsiveLayoutProps) {
   };
   
   return (
-    <div style={containerStyle}>
+    <div style={containerStyle} data-testid={props['data-testid'] || 'responsive-layout'}>
       {/* Header */}
       <header style={headerStyle}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>

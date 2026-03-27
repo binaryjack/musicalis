@@ -20,9 +20,9 @@ describe('project-management', () => {
         cy.get('[data-testid="project-title"]').should('contain', projectName);
         
         // Add a test note to make it unique
-        cy.get('[data-testid="pitch-selector"]').select('C4');
+        cy.get('[data-testid="note-selector"]').select('C4');
         cy.get('[data-testid="duration-selector"]').select('quarter');
-        cy.get('[data-testid="staff-canvas"]').click(200, 250);
+        cy.get('[data-testid="multi-staff-canvas"]').click(200, 250);
         
         // Save project
         cy.get('[data-testid="save-button"]').click();
@@ -362,6 +362,94 @@ describe('project-management', () => {
       
       // Should show all projects again
       cy.get('[data-testid="project-list"] [data-testid="project-item"]').should('have.length', 4);
+    });
+  });
+
+  context('bar-management', () => {
+    beforeEach(() => {
+      cy.get('[data-testid="new-project-button"]').click();
+      cy.get('[data-testid="project-name-input"]').type('Bar Management Test');
+      cy.get('[data-testid="create-project-confirm"]').click();
+    });
+
+    it('opens-bar-management-modal', () => {
+      // Open bar management
+      cy.get('[data-testid="bar-management-button"]').click();
+      cy.get('[data-testid="bar-management-modal"]').should('be.visible');
+      
+      // Verify bar management controls
+      cy.get('[data-testid="bar-management"]').should('be.visible');
+      cy.get('[data-testid="bar-list"]').should('be.visible');
+      cy.get('[data-testid="add-bar-button"]').should('be.visible');
+    });
+
+    it('adds-and-removes-bars', () => {
+      cy.get('[data-testid="bar-management-button"]').click();
+      
+      // Verify initial bar count
+      cy.get('[data-testid="bar-list"] .bar-item').should('have.length', 1);
+      
+      // Add new bar
+      cy.get('[data-testid="add-bar-button"]').click();
+      cy.get('[data-testid="bar-list"] .bar-item').should('have.length', 2);
+      
+      // Remove bar
+      cy.get('[data-testid="bar-list"] .bar-item').last().within(() => {
+        cy.get('[data-testid="remove-bar-button"]').click();
+      });
+      cy.get('[data-testid="bar-list"] .bar-item').should('have.length', 1);
+    });
+
+    it('changes-time-signature', () => {
+      cy.get('[data-testid="bar-management-button"]').click();
+      
+      // Select time signature
+      cy.get('[data-testid="bar-list"] .bar-item').first().within(() => {
+        cy.get('[data-testid="time-signature-selector"]').click();
+      });
+      
+      cy.get('[data-testid="time-signature-3-4"]').click();
+      
+      // Verify change applied
+      cy.get('[data-testid="bar-list"] .bar-item').first().should('contain', '3/4');
+    });
+  });
+
+  context('audio-quality-management', () => {
+    beforeEach(() => {
+      cy.get('[data-testid="new-project-button"]').click();
+      cy.get('[data-testid="project-name-input"]').type('Audio Quality Test');
+      cy.get('[data-testid="create-project-confirm"]').click();
+    });
+
+    it('changes-audio-quality-settings', () => {
+      // Verify audio quality selector is visible
+      cy.get('[data-testid="audio-quality-selector"]').should('be.visible');
+      
+      // Change quality setting
+      cy.get('[data-testid="audio-quality-selector"]').select('hi-res');
+      
+      // Verify memory impact warning
+      cy.get('[data-testid="memory-monitor"]').should('contain', 'High quality');
+    });
+
+    it('shows-quality-impact-on-memory', () => {
+      // Select high quality
+      cy.get('[data-testid="audio-quality-selector"]').select('hi-res');
+      
+      // Verify memory usage increases
+      cy.get('[data-testid="memory-usage-bar"]').then(($bar) => {
+        const highUsage = $bar.attr('data-usage');
+        
+        // Switch to lower quality
+        cy.get('[data-testid="audio-quality-selector"]').select('draft');
+        
+        // Verify memory usage decreases
+        cy.get('[data-testid="memory-usage-bar"]').should(($newBar) => {
+          const lowUsage = $newBar.attr('data-usage') || '0';
+          expect(parseInt(lowUsage)).to.be.lessThan(parseInt(highUsage || '100'));
+        });
+      });
     });
   });
 });
