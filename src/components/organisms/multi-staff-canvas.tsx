@@ -15,6 +15,7 @@ export interface MultiStaffCanvasProps {
   onNoteClick?: (noteId: string, staffId: string) => void;
   onNoteDelete?: (noteId: string, staffId: string) => void;
   onNoteMove?: (noteId: string, staffId: string, newPosition: number) => void;
+  onPlayheadDrag?: (newPosition: number) => void;
 }
 
 export const MultiStaffCanvas = function(props: MultiStaffCanvasProps) {
@@ -22,33 +23,9 @@ export const MultiStaffCanvas = function(props: MultiStaffCanvasProps) {
   const rendererRef = useRef<Renderer | null>(null);
   const [playheadX, setPlayheadX] = useState(0);
   const [viewportScrollX, setViewportScrollX] = useState(0);
+  const [isDragging, setIsDragging] = useState(false);
   const staffHeight = 120;
   const staffSpacing = 20;
-  
-  const calculatePitchFromY = (y: number, staffTop: number, clef: string): string => {
-    const lineSpacing = 10;
-    const staffMiddle = staffTop + (lineSpacing * 2);
-    const relativeY = y - staffMiddle;
-    
-    const treblePitchMap = [
-      'F/5', 'E/5', 'D/5', 'C/5', 'B/4', 'A/4', 'G/4', 'F/4', 'E/4', 'D/4', 'C/4'
-    ];
-    const bassPitchMap = [
-      'A/3', 'G/3', 'F/3', 'E/3', 'D/3', 'C/3', 'B/2', 'A/2', 'G/2', 'F/2', 'E/2'
-    ];
-    
-    const pitchMap = clef === 'bass' ? bassPitchMap : treblePitchMap;
-    const index = Math.max(0, Math.min(pitchMap.length - 1, Math.floor(-relativeY / (lineSpacing / 2)) + 5));
-    return pitchMap[index];
-  };
-  
-  const calculateBeatFromX = (x: number, staffStart: number, staffWidth: number, beatsPerMeasure: number = 4): number => {
-    const relativeX = x - staffStart;
-    const beatWidth = staffWidth / beatsPerMeasure;
-    const beat = Math.max(0, relativeX / beatWidth);
-    // Snap to quarter beats
-    return Math.round(beat * 4) / 4;
-  };
   
   const calculatePlayheadScrollState = () => {
     const contentWidth = (props.width || 800) * 2; // Assuming 2x width for scrolling
@@ -177,41 +154,120 @@ export const MultiStaffCanvas = function(props: MultiStaffCanvasProps) {
       const beatWidth = measureWidth / beatsPerMeasure;
       const playheadX = 20 + (props.playheadPosition * beatWidth);
       
-      context.setStrokeStyle('#ff0000');
-      context.setLineWidth(2);
+      // Different visual style when dragging
+      context.setStrokeStyle(isDragging ? '#ff6666' : '#ff0000');
+      context.setLineWidth(isDragging ? 3 : 2);
       context.beginPath();
       context.moveTo(playheadX, 20);
       context.lineTo(playheadX, totalHeight + 20);
       context.stroke();
+      
+      // Add draggable indicator at top
+      context.setFillStyle(isDragging ? '#ff6666' : '#ff0000');
+      context.beginPath();
+      (context as any).arc(playheadX, 15, 5, 0, Math.PI * 2);
+      context.fill();
     }
     
-    // Add click handlers
-    const svgElement = containerRef.current.querySelector('svg');
-    if (svgElement) {
-      svgElement.addEventListener('click', (event) => {
-        const rect = svgElement.getBoundingClientRect();
+    // ADD EVENT LISTENERS AFTER VEXFLOW RENDERING IS COMPLETE
+    const containerDiv = containerRef.current;
+    if (containerDiv) {
+      console.log('Container div found, adding event listeners');
+      
+      const handleMouseDown = (event: MouseEvent) => {
+        console.log('Mouse down detected at:', event.clientX, event.clientY);
+        event.preventDefault();
+        
+        const rect = containerDiv.getBoundingClientRect();
         const x = event.clientX - rect.left;
         const y = event.clientY - rect.top;
         
-        // Determine which staff was clicked
-        const clickedStaffIndex = Math.floor((y - 40) / (staffHeight + staffSpacing));
-        const clickedStaff = props.staffs[clickedStaffIndex];
+        console.log('Relative coordinates:', x, y);
+        console.log('Current playhead position:', props.playheadPosition);
         
-        if (clickedStaff && props.onStaffClick) {
-          const staffY = 40 + (clickedStaffIndex * (staffHeight + staffSpacing));
-          const pitch = calculatePitchFromY(y, staffY, clickedStaff.clef);
-          
-          // Use time signature from clicked staff for beat calculation
-          const timeSignature = clickedStaff.timeSignature || '4/4';
-          const [beatsPerMeasure] = timeSignature.split('/').map(Number);
-          const beat = calculateBeatFromX(x, 10, (props.width || 800) - 20, beatsPerMeasure);
-          
-          props.onStaffClick(clickedStaff.id, { x, y, pitch, beat });
+        // Start dragging on any click in the staff area
+        if (props.playheadPosition !== undefined) {
+          console.log('Starting drag mode');
+          setIsDragging(true);
+          // Calculate position properly using time signature and staff width
+          if (props.onPlayheadDrag) {
+            const timeSignature = props.staffs[0]?.timeSignature || '4/4';
+            const [beatsPerMeasure] = timeSignature.split('/').map(Number);
+            const measureWidth = (props.width || 800) - 40; // Account for margins (same as playhead drawing)
+            const beatWidth = measureWidth / beatsPerMeasure;
+            const newPosition = Math.max(0, (x - 20) / beatWidth); // Convert mouse x to beat position
+            console.log('Beat width:', beatWidth, 'Calculated position:', newPosition);
+            props.onPlayheadDrag(newPosition);
+          }
         }
-      });
+      };
+      
+      const handleContextMenu = (event: MouseEvent) => {
+        console.log('Context menu prevented');
+        event.preventDefault();
+        event.stopPropagation();
+      };
+      
+      // Remove any existing listeners first
+      containerDiv.removeEventListener('mousedown', handleMouseDown as any);
+      containerDiv.removeEventListener('contextmenu', handleContextMenu as any);
+      
+      // Add new listeners to container div
+      containerDiv.addEventListener('mousedown', handleMouseDown);
+      containerDiv.addEventListener('contextmenu', handleContextMenu);
+      
+      console.log('Event listeners attached to container div');
+    } else {
+      console.log('No container div found');
     }
     
-  }, [props.staffs, props.width, props.playheadPosition, props.selectedStaffId]);
+  }, [props.staffs, props.width, props.playheadPosition, props.selectedStaffId, isDragging]);
+
+  // Separate effect for document-level drag handling
+  useEffect(() => {
+    if (!isDragging) {
+      console.log('Not dragging, skipping drag setup');
+      return;
+    }
+    
+    console.log('Setting up drag listeners');
+
+    const handleMouseMove = (event: MouseEvent) => {
+      console.log('Mouse move during drag:', event.clientX, event.clientY);
+      
+      const containerDiv = containerRef.current;
+      if (containerDiv && props.onPlayheadDrag) {
+        const rect = containerDiv.getBoundingClientRect();
+        const x = event.clientX - rect.left;
+        
+        // Calculate position properly using time signature and staff width
+        const timeSignature = props.staffs[0]?.timeSignature || '4/4';
+        const [beatsPerMeasure] = timeSignature.split('/').map(Number);
+        const measureWidth = (props.width || 800) - 40; // Account for margins
+        const beatWidth = measureWidth / beatsPerMeasure;
+        const newPosition = Math.max(0, Math.min(beatsPerMeasure * 4, (x - 20) / beatWidth)); // Limit to 4 measures
+        
+        console.log('Mouse X:', x, 'Beat width:', beatWidth, 'New position:', newPosition);
+        props.onPlayheadDrag(newPosition);
+      }
+    };
+    
+    const handleMouseUp = (event: MouseEvent) => {
+      console.log('Mouse up - ending drag');
+      event.preventDefault();
+      setIsDragging(false);
+    };
+    
+    // Add events to document for global drag handling
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+    
+    return () => {
+      console.log('Cleaning up drag listeners');
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [isDragging, props.onPlayheadDrag]);
   
   // Update playhead position based on playback
   useEffect(() => {
@@ -228,6 +284,7 @@ export const MultiStaffCanvas = function(props: MultiStaffCanvasProps) {
     <div 
       className="multi-staff-canvas" 
       ref={containerRef}
+      onContextMenu={(e) => e.preventDefault()}
       style={{ 
         width: '100%', 
         height: props.staffs.length * (staffHeight + staffSpacing) + 80,
@@ -238,7 +295,9 @@ export const MultiStaffCanvas = function(props: MultiStaffCanvasProps) {
         transform: `translateX(-${viewportScrollX}px)`,
         transition: 'transform 0.1s ease-out',
         margin: 0,
-        padding: 0
+        padding: 0,
+        cursor: isDragging ? 'grabbing' : 'default',
+        userSelect: 'none'
       }}
     />
   );

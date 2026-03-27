@@ -238,6 +238,12 @@ export const EditorPage = () => {
     }
   };
 
+  const handlePlayheadDrag = (newPosition: number) => {
+    console.log('Playhead dragged to:', newPosition);
+    setCursorPosition(newPosition);
+    playback.seek(newPosition);
+  };
+
   if (project.isLoading) {
     return <div style={{color: '#fff', padding: '20px'}}>Loading project...</div>;
   }
@@ -361,6 +367,7 @@ export const EditorPage = () => {
             selectedStaffId={selectedStaffId}
             darkMode={true}
             onStaffClick={handleStaffClick}
+            onPlayheadDrag={handlePlayheadDrag}
             width={800}
             height={staffs.length * 140 + 100}
           />
