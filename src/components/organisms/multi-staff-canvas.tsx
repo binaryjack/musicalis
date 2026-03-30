@@ -1,7 +1,8 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Stave, StaveNote, Formatter, Renderer, Voice } from 'vexflow';
 import type { PianoStaff } from '../../types/musicTypes';
 import type { ProjectData } from '../../services/projectService';
+import type { EditorMode } from '../../types/enums';
 
 export interface MultiStaffCanvasProps {
   project?: ProjectData | null;
@@ -9,6 +10,7 @@ export interface MultiStaffCanvasProps {
   width?: number;
   height?: number;
   playheadPosition?: number;
+  mode?: EditorMode;
   selectedStaffId?: string;
   darkMode?: boolean;
   onStaffClick?: (staffId: string, position: { x: number; y: number; pitch?: string; beat?: number }) => void;
@@ -21,9 +23,25 @@ export interface MultiStaffCanvasProps {
 }
 
 export const MultiStaffCanvas = function(props: MultiStaffCanvasProps) {
+  const {
+    staffs,
+    width,
+    playheadPosition,
+    mode = 'design',
+    selectedStaffId,
+    darkMode,
+    onPlayheadDrag,
+    onAddBar,
+    onRemoveBar,
+  } = props;
+
+  // Only show playhead and allow dragging in playback mode
+  const isPlaybackMode = mode === 'playback';
+  const showPlayhead = isPlaybackMode && playheadPosition !== undefined;
+
   const containerRef = useRef<HTMLDivElement>(null);
   const rendererRef = useRef<Renderer | null>(null);
-  const [dynamicWidth, setDynamicWidth] = useState(props.width || 800);
+  const [dynamicWidth, setDynamicWidth] = useState(width || 800);
   const [playheadX, setPlayheadX] = useState(0);
   const [viewportScrollX, setViewportScrollX] = useState(0);
   const [isDragging, setIsDragging] = useState(false);
@@ -32,10 +50,11 @@ export const MultiStaffCanvas = function(props: MultiStaffCanvasProps) {
   const staffHeight = 120;
   const staffSpacing = 20;
   const fixedMeasureWidth = 180; // Fixed width per measure
+  const staffOriginX = 10;
   
-  const calculatePlayheadScrollState = () => {
-    const contentWidth = (props.width || 800) * 2; // Assuming 2x width for scrolling
-    const viewportWidth = props.width || 800;
+  const calculatePlayheadScrollState = useCallback(() => {
+    const contentWidth = (width || 800) * 2; // Assuming 2x width for scrolling
+    const viewportWidth = width || 800;
     const centerOffset = viewportWidth / 2;
     
     let scrollState: 'free' | 'center-lock' | 'end-boundary';
@@ -60,23 +79,22 @@ export const MultiStaffCanvas = function(props: MultiStaffCanvasProps) {
     }
     
     return { scrollState, scrollPosition, visualPlayheadX };
-  };
+  }, [playheadX, width]);
   
   useEffect(() => {
-    if (!containerRef.current || !props.staffs.length) return;
+    if (!containerRef.current || !staffs.length) return;
     
     // Calculate the maximum width needed for all staffs (considering different time signatures)
     let maxWidth = 0;
-    props.staffs.forEach(staff => {
-      const measuresCount = staff.measuresCount || 4;
-      const [beatsPerMeasure] = staff.timeSignature.split('/').map(Number);
-      const measureWidth = fixedMeasureWidth * (beatsPerMeasure / 4);
+    staffs.forEach(staff => {
+      const measuresCount = staff.measuresCount || 1;
+      const measureWidth = fixedMeasureWidth;
       const staffWidth = 40 + (measuresCount * measureWidth) + 100;
       maxWidth = Math.max(maxWidth, staffWidth);
     });
     
     const calculatedWidth = maxWidth;
-    const totalHeight = props.staffs.length * (staffHeight + staffSpacing);
+    const totalHeight = staffs.length * (staffHeight + staffSpacing);
     
     console.log('Dynamic canvas dimensions:', calculatedWidth, 'x', totalHeight + 40);
     setDynamicWidth(calculatedWidth);
@@ -90,7 +108,7 @@ export const MultiStaffCanvas = function(props: MultiStaffCanvasProps) {
     const context = renderer.getContext();
     
     // Apply dark mode styling
-    if (props.darkMode) {
+    if (darkMode) {
       // Set dark background for the entire canvas
       const svg = containerRef.current.querySelector('svg');
       if (svg) {
@@ -102,107 +120,79 @@ export const MultiStaffCanvas = function(props: MultiStaffCanvasProps) {
       context.setFillStyle('#f0f0f0');
     }
     
-    props.staffs.forEach((staff, staffIndex) => {
+    staffs.forEach((staff, staffIndex) => {
       if (!staff.visible) return;
       
       const yPosition = 40 + (staffIndex * (staffHeight + staffSpacing));
-      const measuresPerStaff = staff.measuresCount || 4; // Use staff's measure count
-      // Calculate measure width based on time signature
-      const [beatsInMeasure] = staff.timeSignature.split('/').map(Number);
-      const adjustedMeasureWidth = fixedMeasureWidth * (beatsInMeasure / 4); // Adjust width based on beats per measure
-      const staffWidth = 20 + (measuresPerStaff * adjustedMeasureWidth); // Dynamic staff width based on measures
-      const stave = new Stave(10, yPosition, staffWidth);
-      
-      // Add clef and time signature
-      stave.addClef(staff.clef).addTimeSignature(staff.timeSignature);
-      if (staff.keySignature !== 'C') {
-        stave.addKeySignature(staff.keySignature);
-      }
-      
-      stave.setContext(context).draw();
-      
-      // Draw bar lines to separate measures (removed old beat separator code)
-      const [beatsInThisMeasure] = staff.timeSignature.split('/').map(Number);
-      const thisMeasureWidth = fixedMeasureWidth * (beatsInThisMeasure / 4); // Adjust for time signature
-      
-      context.setStrokeStyle(props.darkMode ? '#e0e0e0' : '#000');
-      context.setLineWidth(1);
-      
-      // Only draw measure separators, not beat separators
-      for (let measureIndex = 1; measureIndex < measuresPerStaff; measureIndex++) {
-        const barLineX = 20 + (measureIndex * thisMeasureWidth);
-        context.beginPath();
-        context.moveTo(barLineX, yPosition);
-        context.lineTo(barLineX, yPosition + 80);
-        context.stroke();
-      }
+      const measuresPerStaff = staff.measuresCount || 1; // Use staff's measure count
+      const [beatsPerMeasure, beatValue] = staff.timeSignature.split('/').map(Number);
+      const measureWidth = fixedMeasureWidth;
       
       // Add staff label with dark mode support
-      context.setFillStyle(props.darkMode ? '#e0e0e0' : '#333');
+      context.setFillStyle(darkMode ? '#e0e0e0' : '#333');
       context.setFont('12px Arial');
       context.fillText(staff.name, 15, yPosition - 10);
-      
-      // Render notes for this staff
-      const staffNotes = staff.notes.filter(note => !note.colorId || staff.colorMapping.colors.find(c => c.id === note.colorId));
-      
-      if (staffNotes.length > 0) {
-        const vexNotes = staffNotes.map(note => {
-          const vexNote = new StaveNote({
-            clef: staff.clef,
-            keys: [`${note.pitch.toLowerCase()}/4`],
-            duration: note.duration === 'quarter' ? 'q' :
-                     note.duration === 'half' ? 'h' :
-                     note.duration === 'whole' ? 'w' :
-                     note.duration === 'eighth' ? '8' : 'q'
-          });
-          
-          // Apply color if mapped
-          const colorRule = note.colorId ? staff.colorMapping.colors.find(c => c.id === note.colorId) : null;
-          if (colorRule) {
-            vexNote.setStyle({ fillStyle: colorRule.hex, strokeStyle: colorRule.hex });
-          } else if (props.darkMode) {
-            // Default light color for dark mode
-            vexNote.setStyle({ fillStyle: '#f0f0f0', strokeStyle: '#f0f0f0' });
-          }
-          
-          return vexNote;
-        });
-        
-        const voice = new Voice({ 
-          numBeats: parseInt(staff.timeSignature.split('/')[0]), 
-          beatValue: parseInt(staff.timeSignature.split('/')[1]) 
-        });
-        voice.addTickables(vexNotes);
-        
-        new Formatter().joinVoices([voice]).format([voice], (props.width || 800) - 100);
-        voice.draw(context, stave);
-      }
-      
-      // Staff selection indication removed (no thick border)
 
-      // Draw measure bar lines (vertical lines separating complete measures, not beats)
-      (context as any).setStrokeStyle(props.darkMode ? '#888' : '#444');
-      (context as any).setLineWidth(1);
-      
-      // Draw bar lines between measures (not between beats)
-      for (let measureIndex = 1; measureIndex < measuresPerStaff; measureIndex++) {
-        const barLineX = 20 + (measureIndex * fixedMeasureWidth);
-        (context as any).beginPath();
-        (context as any).moveTo(barLineX, yPosition + 20);
-        (context as any).lineTo(barLineX, yPosition + 80);
-        (context as any).stroke();
+      // Render one stave per measure so clicking + adds a true new bar, not stretched spacing.
+      for (let measureIndex = 0; measureIndex < measuresPerStaff; measureIndex++) {
+        const measureX = staffOriginX + (measureIndex * measureWidth);
+        const measureStave = new Stave(measureX, yPosition, measureWidth);
+
+        if (measureIndex === 0) {
+          measureStave.addClef(staff.clef).addTimeSignature(staff.timeSignature);
+          if (staff.keySignature !== 'C') {
+            measureStave.addKeySignature(staff.keySignature);
+          }
+        }
+
+        measureStave.setContext(context).draw();
+
+        const notesInMeasure = staff.notes
+          .filter(note => (note.barNumber || 1) === (measureIndex + 1))
+          .filter(note => !note.colorId || staff.colorMapping.colors.find(c => c.id === note.colorId));
+
+        if (notesInMeasure.length > 0) {
+          const vexNotes = notesInMeasure.map(note => {
+            const vexNote = new StaveNote({
+              clef: staff.clef,
+              keys: [`${note.pitch.toLowerCase()}/4`],
+              duration: note.duration === 'quarter' ? 'q' :
+                       note.duration === 'half' ? 'h' :
+                       note.duration === 'whole' ? 'w' :
+                       note.duration === 'eighth' ? '8' : 'q'
+            });
+
+            // Position stem properly - move it slightly left for better alignment
+            vexNote.setStemDirection(-1); // -1 = stem down, 1 = stem up, 0 = auto
+
+            const colorRule = note.colorId ? staff.colorMapping.colors.find(c => c.id === note.colorId) : null;
+            if (colorRule) {
+              vexNote.setStyle({ fillStyle: colorRule.hex, strokeStyle: colorRule.hex });
+            } else if (darkMode) {
+              vexNote.setStyle({ fillStyle: '#f0f0f0', strokeStyle: '#f0f0f0' });
+            }
+
+            return vexNote;
+          });
+
+          const voice = new Voice({ numBeats: beatsPerMeasure, beatValue });
+          voice.setStrict(false);
+          voice.addTickables(vexNotes);
+          new Formatter().joinVoices([voice]).formatToStave([voice], measureStave);
+          voice.draw(context, measureStave);
+        }
       }
       
       // Draw final bar line (double line at the end of all measures)
-      const finalBarX = 20 + (measuresPerStaff * fixedMeasureWidth);
-      (context as any).setLineWidth(2);
-      (context as any).beginPath();
-      (context as any).moveTo(finalBarX - 1, yPosition + 20);
-      (context as any).lineTo(finalBarX - 1, yPosition + 80);
-      (context as any).stroke();
+      const finalBarX = staffOriginX + (measuresPerStaff * measureWidth);
+      context.setLineWidth(2);
+      context.beginPath();
+      context.moveTo(finalBarX - 1, yPosition + 20);
+      context.lineTo(finalBarX - 1, yPosition + 80);
+      context.stroke();
 
       // Draw measure controls at the END of the entire staff (not per beat)
-      const staffEndX = 20 + (measuresPerStaff * fixedMeasureWidth);
+      const staffEndX = staffOriginX + (measuresPerStaff * measureWidth);
       
       console.log('Rendering buttons for staff:', staff.id, 'at staffEndX:', staffEndX, 'yPosition:', yPosition);
       
@@ -214,9 +204,9 @@ export const MultiStaffCanvas = function(props: MultiStaffCanvasProps) {
       
       console.log('Add button at:', addButtonX, addButtonY, 'size:', addButtonSize, 'hovered:', isAddHovered);
       
-      context.setFillStyle(props.darkMode ? (isAddHovered ? '#4a9eff' : '#666') : (isAddHovered ? '#007bff' : '#999'));
+      context.setFillStyle(darkMode ? (isAddHovered ? '#4a9eff' : '#666') : (isAddHovered ? '#007bff' : '#999'));
       context.beginPath();
-      (context as any).arc(addButtonX, addButtonY, addButtonSize / 2, 0, Math.PI * 2);
+      context.arc(addButtonX, addButtonY, addButtonSize / 2, 0, Math.PI * 2, false);
       context.fill();
       
       // + symbol
@@ -238,9 +228,9 @@ export const MultiStaffCanvas = function(props: MultiStaffCanvasProps) {
         
         console.log('Remove button at:', removeButtonX, removeButtonY, 'size:', removeButtonSize, 'hovered:', isRemoveHovered);
         
-        context.setFillStyle(props.darkMode ? (isRemoveHovered ? '#ff6b6b' : '#666') : (isRemoveHovered ? '#dc3545' : '#999'));
+        context.setFillStyle(darkMode ? (isRemoveHovered ? '#ff6b6b' : '#666') : (isRemoveHovered ? '#dc3545' : '#999'));
         context.beginPath();
-        (context as any).arc(removeButtonX, removeButtonY, removeButtonSize / 2, 0, Math.PI * 2);
+        context.arc(removeButtonX, removeButtonY, removeButtonSize / 2, 0, Math.PI * 2, false);
         context.fill();
         
         // - symbol
@@ -253,15 +243,15 @@ export const MultiStaffCanvas = function(props: MultiStaffCanvasProps) {
       }
     });
     
-    // Draw playhead
-    if (props.playheadPosition !== undefined) {
+    // Draw playhead - only visible in playback mode
+    if (showPlayhead && isPlaybackMode) {
       // Get time signature from first staff or default to 4/4
-      const timeSignature = props.staffs[0]?.timeSignature || '4/4';
+      const timeSignature = staffs[0]?.timeSignature || '4/4';
       const [beatsPerMeasure] = timeSignature.split('/').map(Number);
       
       const measureWidth = fixedMeasureWidth;
       const beatWidth = measureWidth / beatsPerMeasure;
-      const playheadX = 20 + (props.playheadPosition * beatWidth);
+      const playheadX = staffOriginX + (playheadPosition * beatWidth);
       
       // Different visual style when dragging
       context.setStrokeStyle(isDragging ? '#ff6666' : '#ff0000');
@@ -274,7 +264,7 @@ export const MultiStaffCanvas = function(props: MultiStaffCanvasProps) {
       // Add draggable indicator at top
       context.setFillStyle(isDragging ? '#ff6666' : '#ff0000');
       context.beginPath();
-      (context as any).arc(playheadX, 15, 5, 0, Math.PI * 2);
+      context.arc(playheadX, 15, 5, 0, Math.PI * 2, false);
       context.fill();
     }
     
@@ -296,12 +286,12 @@ export const MultiStaffCanvas = function(props: MultiStaffCanvasProps) {
         // Check for bar control clicks first
         let handleByBarControl = false;
         
-        props.staffs.forEach((staff, staffIndex) => {
+        staffs.forEach((staff, staffIndex) => {
           if (!staff.visible || handleByBarControl) return;
           
           const staffY = 40 + (staffIndex * (staffHeight + staffSpacing));
-          const measuresPerStaff = staff.measuresCount || 4;
-          const staffEndX = 20 + (measuresPerStaff * fixedMeasureWidth);
+          const measuresPerStaff = staff.measuresCount || 1;
+          const staffEndX = staffOriginX + (measuresPerStaff * fixedMeasureWidth);
           
           // Check add button click (at end of staff)
           const addButtonX = staffEndX + 10;
@@ -310,9 +300,9 @@ export const MultiStaffCanvas = function(props: MultiStaffCanvasProps) {
           
           console.log('Add button click check:', { x, y, addButtonX, addButtonY, addDistance });
           
-          if (addDistance < 15 && props.onAddBar) { // Increased hit area
+          if (addDistance < 15 && onAddBar) { // Increased hit area
             console.log('Add measure clicked for staff:', staff.id);
-            props.onAddBar(staff.id, measuresPerStaff - 1); // Add after the last measure
+            onAddBar(staff.id, measuresPerStaff - 1); // Add after the last measure
             handleByBarControl = true;
             return;
           }
@@ -325,9 +315,9 @@ export const MultiStaffCanvas = function(props: MultiStaffCanvasProps) {
             
             console.log('Remove button click check:', { x, y, removeButtonX, removeButtonY, removeDistance });
             
-            if (removeDistance < 15 && props.onRemoveBar) { // Increased hit area
+            if (removeDistance < 15 && onRemoveBar) { // Increased hit area
               console.log('Remove measure clicked for staff:', staff.id);
-              props.onRemoveBar(staff.id, measuresPerStaff - 1); // Remove the last measure
+              onRemoveBar(staff.id, measuresPerStaff - 1); // Remove the last measure
               handleByBarControl = true;
               return;
             }
@@ -339,20 +329,26 @@ export const MultiStaffCanvas = function(props: MultiStaffCanvasProps) {
           return;
         }
         
-        // Handle playhead dragging
-        if (props.playheadPosition !== undefined) {
+        // Handle playhead dragging only when clicking near the playhead line - ONLY IN PLAYBACK MODE
+        if (isPlaybackMode && playheadPosition !== undefined) {
+          const timeSignature = staffs[0]?.timeSignature || '4/4';
+          const [beatsPerMeasure] = timeSignature.split('/').map(Number);
+          const beatWidth = fixedMeasureWidth / beatsPerMeasure;
+          const currentPlayheadX = staffOriginX + (playheadPosition * beatWidth);
+          const nearPlayhead = Math.abs(x - currentPlayheadX) < 10;
+
+          if (!nearPlayhead) {
+            return;
+          }
+
           console.log('Starting drag mode');
           setIsDragging(true);
-          // Calculate position properly using time signature and dynamic staff width
-          if (props.onPlayheadDrag) {
-            const timeSignature = props.staffs[0]?.timeSignature || '4/4';
-            const [beatsPerMeasure] = timeSignature.split('/').map(Number);
-            const firstStaffMeasures = props.staffs[0]?.measuresCount || 4;
+          if (onPlayheadDrag) {
+            const firstStaffMeasures = staffs[0]?.measuresCount || 1;
             const totalBeats = firstStaffMeasures * beatsPerMeasure;
-            const beatWidth = fixedMeasureWidth / beatsPerMeasure;
-            const newPosition = Math.max(0, Math.min(totalBeats, (x - 20) / beatWidth));
+            const newPosition = Math.max(0, Math.min(totalBeats, (x - staffOriginX) / beatWidth));
             console.log('Beat width:', beatWidth, 'Calculated position:', newPosition);
-            props.onPlayheadDrag(newPosition);
+            onPlayheadDrag(newPosition);
           }
         }
       };
@@ -368,12 +364,12 @@ export const MultiStaffCanvas = function(props: MultiStaffCanvasProps) {
         let foundAddHover = null;
         let foundRemoveHover = null;
         
-        props.staffs.forEach((staff, staffIndex) => {
+        staffs.forEach((staff, staffIndex) => {
           if (!staff.visible) return;
           
           const staffY = 40 + (staffIndex * (staffHeight + staffSpacing));
-          const measuresPerStaff = staff.measuresCount || 4;
-          const staffEndX = 20 + (measuresPerStaff * fixedMeasureWidth);
+          const measuresPerStaff = staff.measuresCount || 1;
+          const staffEndX = staffOriginX + (measuresPerStaff * fixedMeasureWidth);
           
           // Check add button hover (at end of staff)
           const addButtonX = staffEndX + 10;
@@ -414,27 +410,29 @@ export const MultiStaffCanvas = function(props: MultiStaffCanvasProps) {
         event.stopPropagation();
       };
       
-      // Remove any existing listeners first
-      containerDiv.removeEventListener('mousedown', handleMouseDown as any);
-      containerDiv.removeEventListener('mousemove', handleMouseMove as any);
-      containerDiv.removeEventListener('contextmenu', handleContextMenu as any);
-      
       // Add new listeners to container div
       containerDiv.addEventListener('mousedown', handleMouseDown);
       containerDiv.addEventListener('mousemove', handleMouseMove);
       containerDiv.addEventListener('contextmenu', handleContextMenu);
       
       console.log('Event listeners attached to container div');
+
+      return () => {
+        containerDiv.removeEventListener('mousedown', handleMouseDown);
+        containerDiv.removeEventListener('mousemove', handleMouseMove);
+        containerDiv.removeEventListener('contextmenu', handleContextMenu);
+      };
     } else {
       console.log('No container div found');
     }
-    
-  }, [props.staffs, props.width, props.playheadPosition, props.selectedStaffId, isDragging, hoveredAddBar, hoveredRemoveBar]);
 
-  // Separate effect for document-level drag handling
+    return;
+  }, [staffs, width, playheadPosition, selectedStaffId, darkMode, onAddBar, onRemoveBar, onPlayheadDrag, isDragging, hoveredAddBar, hoveredRemoveBar, isPlaybackMode]);
+
+  // Separate effect for document-level drag handling - ONLY ACTIVE IN PLAYBACK MODE
   useEffect(() => {
-    if (!isDragging) {
-      console.log('Not dragging, skipping drag setup');
+    if (!isDragging || !isPlaybackMode) {
+      console.log('Not dragging or not in playback mode, skipping drag setup');
       return;
     }
     
@@ -444,20 +442,20 @@ export const MultiStaffCanvas = function(props: MultiStaffCanvasProps) {
       console.log('Mouse move during drag:', event.clientX, event.clientY);
       
       const containerDiv = containerRef.current;
-      if (containerDiv && props.onPlayheadDrag) {
+      if (containerDiv && onPlayheadDrag) {
         const rect = containerDiv.getBoundingClientRect();
         const x = event.clientX - rect.left;
         
         // Calculate position properly using time signature and dynamic staff width
-        const timeSignature = props.staffs[0]?.timeSignature || '4/4';
+        const timeSignature = staffs[0]?.timeSignature || '4/4';
         const [beatsPerMeasure] = timeSignature.split('/').map(Number);
-        const firstStaffMeasures = props.staffs[0]?.measuresCount || 4;
+        const firstStaffMeasures = staffs[0]?.measuresCount || 1;
         const totalBeats = firstStaffMeasures * beatsPerMeasure;
         const beatWidth = fixedMeasureWidth / beatsPerMeasure;
-        const newPosition = Math.max(0, Math.min(totalBeats, (x - 20) / beatWidth));
+        const newPosition = Math.max(0, Math.min(totalBeats, (x - staffOriginX) / beatWidth));
         
         console.log('Mouse X:', x, 'Beat width:', beatWidth, 'New position:', newPosition);
-        props.onPlayheadDrag(newPosition);
+        onPlayheadDrag(newPosition);
       }
     };
     
@@ -476,18 +474,18 @@ export const MultiStaffCanvas = function(props: MultiStaffCanvasProps) {
       document.removeEventListener('mousemove', handleMouseMove);
       document.removeEventListener('mouseup', handleMouseUp);
     };
-  }, [isDragging, props.onPlayheadDrag]);
+  }, [isDragging, onPlayheadDrag, staffs, isPlaybackMode]);
   
   // Update playhead position based on playback
   useEffect(() => {
-    if (props.playheadPosition !== undefined) {
-      const newX = (props.playheadPosition / 100) * (props.width || 800);
+    if (playheadPosition !== undefined) {
+      const newX = (playheadPosition / 100) * (width || 800);
       setPlayheadX(newX);
       
       const { scrollPosition } = calculatePlayheadScrollState();
       setViewportScrollX(scrollPosition);
     }
-  }, [props.playheadPosition, props.width]);
+  }, [playheadPosition, width, calculatePlayheadScrollState]);
   
   return (
     <div 
@@ -496,9 +494,9 @@ export const MultiStaffCanvas = function(props: MultiStaffCanvasProps) {
       onContextMenu={(e) => e.preventDefault()}
       style={{ 
         width: dynamicWidth,
-        height: props.staffs.length * (staffHeight + staffSpacing) + 80,
-        border: props.darkMode ? '1px solid #444' : '1px solid #ccc',
-        backgroundColor: props.darkMode ? '#1a1a1a' : '#fff',
+        height: staffs.length * (staffHeight + staffSpacing) + 80,
+        border: darkMode ? '1px solid #444' : '1px solid #ccc',
+        backgroundColor: darkMode ? '#1a1a1a' : '#fff',
         overflow: 'auto',
         position: 'relative',
         transform: `translateX(-${viewportScrollX}px)`,

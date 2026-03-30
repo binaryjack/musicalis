@@ -74,6 +74,10 @@ export const StaffCanvas = function(props: StaffCanvasProps) {
                    note.duration === 'whole' ? 'w' : 
                    note.duration === 'eighth' ? '8' : 'q'
         });
+        
+        // Position stem properly - stems should connect to the notehead
+        vexNote.setStemDirection(-1); // Auto-position stems relative to note head
+        
         return vexNote;
       });
 

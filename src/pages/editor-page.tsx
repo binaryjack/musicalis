@@ -396,16 +396,13 @@ export const EditorPage = ({ projectId }: EditorPageProps) => {
               data-testid="multi-staff-canvas"
               staffs={staves}
               project={project.currentProject}
+              mode={mode}
               playheadPosition={0}
-              onStaffClick={(staffId: string, position: any) => {
+              onStaffClick={isDesignMode ? (staffId: string, position: any) => {
                 console.log('MultiStaffCanvas click:', staffId, position, 'Design mode:', isDesignMode);
                 setSelectedStaffIndex(0); // Mock implementation
-                if (isDesignMode) {
-                  handleStaffClick(position);
-                } else {
-                  console.log('Not in design mode - cannot add notes');
-                }
-              }}
+                handleStaffClick(position);
+              } : undefined}
               onNoteDelete={isDesignMode ? (noteId: string) => {
                 console.log('Deleting note:', noteId);
                 // Find the note index by parsing the noteId

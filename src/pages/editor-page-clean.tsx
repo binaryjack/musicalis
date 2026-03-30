@@ -2,7 +2,6 @@ import { useEffect, useState } from 'react';
 import { useEditor } from '../features/editor/hooks/useEditor';
 import { useProject } from '../hooks/useProject';
 import { usePlayback } from '../hooks/usePlayback';
-import { musicNote, noteDuration } from '../types/musicTypes';
 import { Dropdown } from '../components/atoms/dropdown';
 import { BpmControl } from '../components/atoms/bpm-control';
 import { AddStaffButton } from '../components/atoms/add-staff-button';
@@ -10,9 +9,14 @@ import { TimeSignatureControl } from '../components/atoms/time-signature-control
 import { ConfirmModal } from '../components/atoms/confirm-modal';
 import { MenuBar } from '../components/molecules/menu-bar';
 import { TransportBar } from '../components/molecules/transport-bar';
-import { MultiStaffCanvas } from '../components/organisms/multi-staff-canvas';
-import type { NoteDuration, PianoStaff } from '../types/musicTypes';
+import { MusicStaffCanvas } from '../components/organisms/music-staff-canvas';
+import type { NoteDuration, Staff } from '../types/musicTypes';
 import type { MenuItem } from '../components/molecules/menu-bar';
+import { 
+  parseTimeSignature, 
+  initializeStaff, 
+  createEmptyBar 
+} from '../shared/utils/music-helpers';
 
 export const EditorPage = () => {
   const { editorUI: { mode }, setMode } = useEditor();
@@ -25,21 +29,15 @@ export const EditorPage = () => {
   const [videoResolution, setVideoResolution] = useState<string>('1080p');
   const [audioQuality, setAudioQuality] = useState<string>('high');
   const [cursorPosition, setCursorPosition] = useState<number>(0);
-  const [staffs, setStaffs] = useState<PianoStaff[]>([
-    {
+  const defaultTimeSignature = parseTimeSignature('4/4');
+  const [staffs, setStaffs] = useState<Staff[]>([
+    initializeStaff({
       id: 'staff-1',
       name: 'Piano Staff 1',
       clef: 'treble',
       keySignature: 'C',
-      timeSignature: '4/4',
-      notes: [],
-      colorMapping: { id: 'default', name: 'Default', colors: [] },
-      visible: true,
-      muted: false,
-      volume: 0.8,
       instrument: 'piano',
-      measuresCount: 4 // Start with 4 measures
-    }
+    }, defaultTimeSignature, 1)
   ]);
   const [selectedStaffId, setSelectedStaffId] = useState<string>('staff-1');
   const [showDeleteModal, setShowDeleteModal] = useState(false);
@@ -47,10 +45,15 @@ export const EditorPage = () => {
 
   // Initialize time signature from first staff
   useEffect(() => {
-    if (staffs.length > 0 && staffs[0].timeSignature !== timeSignature) {
-      setTimeSignature(staffs[0].timeSignature);
+    const firstStaff = staffs[0];
+    if (firstStaff?.timeSignature) {
+      const display = firstStaff.timeSignature.display;
+      if (display && display !== timeSignature) {
+        // Use setTimeout to avoid setState in render
+        setTimeout(() => setTimeSignature(display), 0);
+      }
     }
-  }, [staffs, timeSignature]);
+  }, [staffs]); // Removed timeSignature to avoid infinite loop
 
   const noteOptions = [
     { value: 'whole', label: 'Whole Note', icon: '𝅝' },
@@ -118,67 +121,85 @@ export const EditorPage = () => {
   // Initialize default project
   useEffect(() => {
     if (!project.currentProject && !project.isLoading) {
-      project.createProject('New Composition').then(() => {
-        const initialNotes = [
-          { pitch: musicNote.C4, duration: noteDuration.quarter, position: 0, velocity: 0.7 },
-          { pitch: musicNote.D4, duration: noteDuration.quarter, position: 1, velocity: 0.7 },
-          { pitch: musicNote.E4, duration: noteDuration.half, position: 2, velocity: 0.7 },
-        ];
-        initialNotes.forEach(note => project.addNote(note));
-      });
+      project.createProject('New Composition');
     }
   }, [project]);
 
   // Sync playback position with cursor during playback
   useEffect(() => {
     if (playback.isPlaying) {
-      const interval = setInterval(() => {
+      let animationFrameId: number;
+      
+      // Calculate total beats in all staffs
+      let maxBeats = 0;
+      staffs.forEach(staff => {
+        const beatsPerBar = staff.bars[0]?.beats.length || 4;
+        const totalBeats = staff.bars.length * beatsPerBar;
+        maxBeats = Math.max(maxBeats, totalBeats);
+      });
+      
+      const updatePosition = () => {
         const currentTime = playback.currentTime;
-        // Convert time to beats (assuming 4/4 time signature)
+        // Convert time (in seconds) to beat position based on BPM
+        // At 120 BPM: 2 beats per second, at 60 BPM: 1 beat per second
         const beatsPerSecond = bpm / 60;
         const currentBeat = currentTime * beatsPerSecond;
+        
+        // Stop playback if we've reached the end
+        if (currentBeat >= maxBeats) {
+          playback.stop();
+          setCursorPosition(maxBeats);
+          return;
+        }
+        
         setCursorPosition(currentBeat);
-      }, 100);
+        
+        if (playback.isPlaying) {
+          animationFrameId = requestAnimationFrame(updatePosition);
+        }
+      };
+      
+      animationFrameId = requestAnimationFrame(updatePosition);
 
-      return () => clearInterval(interval);
+      return () => {
+        if (animationFrameId) {
+          cancelAnimationFrame(animationFrameId);
+        }
+      };
     }
-  }, [playback.isPlaying, bpm]); // Remove playback.currentTime from dependencies
+  }, [playback, bpm, staffs]);
 
   // Load notes from staffs into playback system
   useEffect(() => {
-    const allNotes: { pitch: any; duration: any; position: number }[] = [];
+    const allNotes: { pitch: string; duration: string; beatIndex: number }[] = [];
     staffs.forEach(staff => {
-      staff.notes.forEach(note => {
-        allNotes.push({
-          pitch: note.pitch,
-          duration: note.duration,
-          position: note.position
+      staff.bars.forEach(bar => {
+        bar.beats.forEach(beat => {
+          beat.notes.forEach(note => {
+            allNotes.push({
+              pitch: `${note.pitch}${note.octave}`,
+              duration: note.duration,
+              beatIndex: bar.index * bar.beats.length + beat.index
+            });
+          });
         });
       });
     });
     
-    // Sort by position and load into playback
-    allNotes.sort((a, b) => a.position - b.position);
-    if (allNotes.length > 0) {
-      playback.loadNotes(allNotes);
-    }
-  }, [staffs]); // Remove playback from dependencies
+    // Sort by beatIndex
+    allNotes.sort((a, b) => a.beatIndex - b.beatIndex);
+    // Note: playback.loadNotes needs updating for new structure
+  }, [staffs]);
 
   const handleAddStaff = () => {
     const newStaffId = `staff-${staffs.length + 1}`;
-    const newStaff: PianoStaff = {
+    const newStaff = initializeStaff({
       id: newStaffId,
       name: `Piano Staff ${staffs.length + 1}`,
       clef: 'treble',
       keySignature: 'C',
-      timeSignature: timeSignature, // Use current time signature
-      notes: [],
-      colorMapping: { id: 'default', name: 'Default', colors: [] },
-      visible: true,
-      muted: false,
-      volume: 0.8,
-      instrument: 'piano'
-    };
+      instrument: 'piano',
+    }, defaultTimeSignature, 1);
     setStaffs([...staffs, newStaff]);
     setSelectedStaffId(newStaffId);
   };
@@ -193,12 +214,23 @@ export const EditorPage = () => {
 
   const handleTimeSignatureChange = (newTimeSignature: string) => {
     setTimeSignature(newTimeSignature);
-    // Update all staffs with new time signature
+    const parsedTimeSig = parseTimeSignature(newTimeSignature);
+    
+    // Update all staffs with new time signature and recreate bars with correct beat count
     setStaffs(prevStaffs => 
-      prevStaffs.map(staff => ({
-        ...staff,
-        timeSignature: newTimeSignature
-      }))
+      prevStaffs.map(staff => {
+        // Recreate each bar with the new number of beats
+        const updatedBars = staff.bars.map((_bar, index) => {
+          // Create new bar with correct beat count based on new time signature
+          return createEmptyBar(index, parsedTimeSig);
+        });
+        
+        return {
+          ...staff,
+          timeSignature: parsedTimeSig,
+          bars: updatedBars
+        };
+      })
     );
   };
 
@@ -220,42 +252,32 @@ export const EditorPage = () => {
   };
 
   const handleGoToEnd = () => {
-    // Calculate end based on staff notes
-    let maxPosition = 0;
+    let maxBeats = 0;
     staffs.forEach(staff => {
-      staff.notes.forEach(note => {
-        const noteEnd = note.position + (note.duration === 'whole' ? 4 : note.duration === 'half' ? 2 : note.duration === 'quarter' ? 1 : 0.5);
-        maxPosition = Math.max(maxPosition, noteEnd);
-      });
+      const totalBeats = staff.bars.length * (staff.bars[0]?.beats.length || 4);
+      maxBeats = Math.max(maxBeats, totalBeats);
     });
-    const endPos = Math.max(maxPosition, 4); // At least 4 beats
+    const endPos = Math.max(maxBeats, 4);
     setCursorPosition(endPos);
     playback.seek(endPos);
-  };
-
-  const handleStaffClick = (staffId: string, position: { x: number; y: number; pitch?: string; beat?: number }) => {
-    console.log('Staff clicked:', staffId, position);
-    setSelectedStaffId(staffId);
-    if (mode === 'design' && position.pitch && position.beat !== undefined) {
-      // Add note logic here
-      console.log('Adding note:', position.pitch, 'at beat:', position.beat);
-    }
-  };
-
-  const handlePlayheadDrag = (newPosition: number) => {
-    console.log('Playhead dragged to:', newPosition);
-    setCursorPosition(newPosition);
-    playback.seek(newPosition);
   };
 
   const handleAddBar = (staffId: string, afterBarIndex: number) => {
     console.log('Adding bar after index', afterBarIndex, 'for staff', staffId);
     setStaffs(prevStaffs => 
-      prevStaffs.map(staff => 
-        staff.id === staffId 
-          ? { ...staff, measuresCount: (staff.measuresCount || 4) + 1 }
-          : staff
-      )
+      prevStaffs.map(staff => {
+        if (staff.id === staffId) {
+          const timeSignature = staff.timeSignature || defaultTimeSignature;
+          const newBarIndex = staff.bars.length;
+          const newBar = createEmptyBar(newBarIndex, timeSignature);
+          
+          return {
+            ...staff,
+            bars: [...staff.bars, newBar]
+          };
+        }
+        return staff;
+      })
     );
   };
 
@@ -270,11 +292,20 @@ export const EditorPage = () => {
     if (barToDelete) {
       console.log('Confirming delete bar', barToDelete.barIndex, 'from staff', barToDelete.staffId);
       setStaffs(prevStaffs => 
-        prevStaffs.map(staff => 
-          staff.id === barToDelete.staffId 
-            ? { ...staff, measuresCount: Math.max(1, (staff.measuresCount || 4) - 1) }
-            : staff
-        )
+        prevStaffs.map(staff => {
+          if (staff.id === barToDelete.staffId && staff.bars.length > 1) {
+            // Remove the last bar and reindex remaining bars
+            const updatedBars = staff.bars.slice(0, -1).map((bar, index) => ({
+              ...bar,
+              index
+            }));
+            return {
+              ...staff,
+              bars: updatedBars
+            };
+          }
+          return staff;
+        })
       );
     }
     setBarToDelete(null);
@@ -284,6 +315,55 @@ export const EditorPage = () => {
   const cancelDeleteBar = () => {
     setBarToDelete(null);
     setShowDeleteModal(false);
+  };
+
+  const handlePlayheadChange = (position: number) => {
+    setCursorPosition(position);
+    playback.seek(position);
+  };
+
+  const handleAddNote = (staffId: string, barIndex: number, beatIndex: number, pitch: string, octave: number, duration: NoteDuration) => {
+    setStaffs(prevStaffs =>
+      prevStaffs.map(staff => {
+        if (staff.id === staffId) {
+          const updatedBars = staff.bars.map((bar, bIdx) => {
+            if (bIdx === barIndex) {
+              const updatedBeats = bar.beats.map((beat, btIdx) => {
+                if (btIdx === beatIndex) {
+                  // Add note to this beat
+                  const newNote = {
+                    id: `note-${Date.now()}-${Math.random()}`,
+                    pitch,
+                    octave,
+                    duration,
+                    beatIndex,
+                    subdivisionOffset: 0,
+                    visualOffsetX: 0,
+                    visualOffsetY: 0,
+                    velocity: 0.8,
+                  };
+                  return {
+                    ...beat,
+                    notes: [...beat.notes, newNote]
+                  };
+                }
+                return beat;
+              });
+              return {
+                ...bar,
+                beats: updatedBeats
+              };
+            }
+            return bar;
+          });
+          return {
+            ...staff,
+            bars: updatedBars
+          };
+        }
+        return staff;
+      })
+    );
   };
 
   if (project.isLoading) {
@@ -397,24 +477,35 @@ export const EditorPage = () => {
           padding: '0',
           height: 'calc(100% - 40px)',
           border: '1px solid #333',
-          overflow: 'auto'
+          overflowX: 'auto',
+          overflowY: 'auto'
         }}>
           <h2 style={{ margin: '0 0 8px 0', color: '#f0f0f0', fontSize: '16px', padding: '10px' }}>
             Staff Editor - Mode: {mode} - Selected: {selectedStaffId}
           </h2>
-          <MultiStaffCanvas
-            staffs={staffs}
-            project={project.currentProject}
-            playheadPosition={cursorPosition}
-            selectedStaffId={selectedStaffId}
-            darkMode={true}
-            onStaffClick={handleStaffClick}
-            onPlayheadDrag={handlePlayheadDrag}
-            onAddBar={handleAddBar}
-            onRemoveBar={handleRemoveBar}
-            width={800}
-            height={staffs.length * 140 + 100}
-          />
+          {staffs.map(staff => {
+            // Calculate canvas width based on number of bars
+            const barStartX = 130;
+            const finalBarX = barStartX + (staff.bars.length * 200) + 60; // barWidth=200 + extra space for buttons
+            const canvasWidth = Math.max(800, finalBarX);
+            
+            return (
+              <MusicStaffCanvas
+                key={staff.id}
+                staff={staff}
+                playheadPosition={cursorPosition}
+                darkMode={true}
+                selectedDuration={selectedDuration}
+                selectedRest={selectedRest}
+                onAddBar={handleAddBar}
+                onRemoveBar={handleRemoveBar}
+                onPlayheadChange={handlePlayheadChange}
+                onAddNote={handleAddNote}
+                width={canvasWidth}
+                height={200}
+              />
+            );
+          })}
         </div>
       </div>
 

@@ -1,0 +1,11 @@
+/**
+ * Bravura Music Font
+ * SMuFL-compliant music notation font
+ */
+@font-face {
+  font-family: 'Bravura';
+  src: url('/fonts/Bravura.otf') format('opentype');
+  font-weight: normal;
+  font-style: normal;
+  font-display: block;
+}

@@ -116,7 +116,8 @@ export class AudioEngine {
   }
 
   getCurrentTime(): number {
-    return parseFloat(this.transport.position.toString());
+    // Convert Tone.Transport position to seconds
+    return this.transport.seconds;
   }
 
   get isPlaying(): boolean {
