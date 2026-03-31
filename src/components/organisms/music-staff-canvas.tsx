@@ -92,21 +92,35 @@ export const MusicStaffCanvas = function(props: MusicStaffCanvasProps) {
   };
 
   /**
-   * Calculate remaining duration available in a beat
-   */
-  const getRemainingDuration = useCallback((): number => {
-    return 1;
-  }, []);
+     * Check if a note can fit in the specified beat
+     */
+    const canFitNote = useCallback((barIndex: number, beatIndex: number, duration: NoteDuration): boolean => {
+      const bar = staff.bars[barIndex];
+      if (!bar) return false;
+      const beat = bar.beats[beatIndex];
+      if (!beat) return false;
 
-  /**
-   * Check if a note can fit in the specified beat
-   */
-    const canFitNote = useCallback((_barIndex: number, _beatIndex: number, duration: NoteDuration): boolean => {
-      const remainingDuration = getRemainingDuration();
-      const noteDuration = getDurationValue(duration);
-      return noteDuration <= remainingDuration;
-    }, [getRemainingDuration]);
-
+      const durationVal = getDurationValue(duration);
+      const usedInBeat = beat.notes.reduce((sum, note) => sum + getDurationValue((note as any).duration), 0);
+      
+      // If adding to a beat that already has notes (e.g. eighth notes)
+      if (usedInBeat > 0) {
+         return (usedInBeat + durationVal) <= 1;
+      }
+      
+      // If the beat is empty, check if it can span the required number of beats
+      const beatsNeeded = Math.ceil(durationVal);
+      // Can't overflow the bar
+      if (beatIndex + beatsNeeded > bar.beats.length) return false;
+      
+      // For longer notes (half, whole), ensure subsequent beats are empty
+      for (let i = 1; i < beatsNeeded; i++) {
+        const checkBeat = bar.beats[beatIndex + i];
+        if (checkBeat && checkBeat.notes.length > 0) return false;
+      }
+      
+      return true;
+    }, [staff]);
   const getNoteY = useCallback((pitch: string, octave: number): number => {
     const staffTop = 40;
     const lineSpacing = RenderConfig.staffLineSpacing;

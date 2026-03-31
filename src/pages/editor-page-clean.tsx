@@ -17,6 +17,7 @@ import {
     parseTimeSignature
 } from '../shared/utils/music-helpers';
 import type { MusicNote, NoteDuration, Staff } from '../types/musicTypes';
+import { MusicalElementType } from '../types';
 
 import { MIDI_INSTRUMENTS } from '../shared/utils/midi-instruments';
 
@@ -25,7 +26,7 @@ export const EditorPage = () => {
   const project = useProject();
   const playback = usePlayback();
   const [selectedDuration, setSelectedDuration] = useState<NoteDuration>('quarter');
-  const [selectedRest, setSelectedRest] = useState<string>('quarter-rest');
+  const [selectedRest, setSelectedRest] = useState<string>('');
   const [bpm, setBpm] = useState<number>(120);
   const [timeSignature, setTimeSignature] = useState<string>('4/4');
   const [videoResolution, setVideoResolution] = useState<string>('1080p');
@@ -58,22 +59,46 @@ export const EditorPage = () => {
   }, [staffs]); // Removed timeSignature to avoid infinite loop
 
   const noteOptions = [
-    { value: 'whole', label: 'Whole Note', icon: '𝅝' },
-    { value: 'half', label: 'Half Note', icon: '𝅗𝅥' },
-    { value: 'quarter', label: 'Quarter Note', icon: '♩' },
-    { value: 'eighth', label: 'Eighth Note', icon: '♪' },
-    { value: 'sixteenth', label: 'Sixteenth Note', icon: '𝅘𝅥𝅯' },
-    { value: 'thirty-second', label: 'Thirty-second Note', icon: '𝅘𝅥𝅰' },
+    { value: 'whole', label: 'Whole', icon: '𝅝' },
+    { value: 'half', label: 'Half', icon: '𝅗𝅥' },
+    { value: 'quarter', label: 'Quarter', icon: '♩' },
+    { value: 'eighth', label: 'Eighth', icon: '♪' },
+    { value: 'sixteenth', label: '16th', icon: '𝅘𝅥𝅯' },
   ];
 
   const restOptions = [
-    { value: 'whole-rest', label: 'Whole Rest', icon: '𝄻' },
-    { value: 'half-rest', label: 'Half Rest', icon: '𝄼' },
-    { value: 'quarter-rest', label: 'Quarter Rest', icon: '𝄽' },
-    { value: 'eighth-rest', label: 'Eighth Rest', icon: '𝄾' },
-    { value: 'sixteenth-rest', label: 'Sixteenth Rest', icon: '𝄿' },
-    { value: 'thirty-second-rest', label: 'Thirty-second Rest', icon: '𝅀' },
+    { value: 'whole-rest', label: 'Whole', icon: '𝄻' },
+    { value: 'half-rest', label: 'Half', icon: '𝄼' },
+    { value: 'quarter-rest', label: 'Quarter', icon: '𝄽' },
+    { value: 'eighth-rest', label: 'Eighth', icon: '𝄾' },
+    { value: 'sixteenth-rest', label: '16th', icon: '𝄿' },
   ];
+
+  const ToolboxButton = ({ active, onClick, icon, label }: { active: boolean, onClick: () => void, icon: string, label: string }) => (
+    <button
+      onClick={onClick}
+      title={label}
+      style={{
+        width: '32px',
+        height: '32px',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: active ? '#4a9eff' : '#333',
+        color: active ? '#fff' : '#ccc',
+        border: '1px solid',
+        borderColor: active ? '#2d88ff' : '#444',
+        borderRadius: '4px',
+        cursor: 'pointer',
+        fontSize: '18px',
+        padding: 0,
+        boxShadow: active ? '0 0 0 2px rgba(74, 158, 255, 0.3)' : 'none',
+        transition: 'all 0.1s ease',
+      }}
+    >
+      {icon}
+    </button>
+  );
 
   const videoOptions = [
     { value: '720p', label: '720p HD', icon: '📺' },
@@ -178,11 +203,13 @@ export const EditorPage = () => {
       staff.bars.forEach(bar => {
         bar.beats.forEach(beat => {
           beat.notes.forEach(note => {
-            allNotes.push({
-              pitch: `${note.pitch}${note.octave}`,
-              duration: note.duration,
-              beatIndex: bar.index * bar.beats.length + beat.index
-            });
+            if ((note as Record<string, unknown>).type !== 'rest') {
+              allNotes.push({
+                pitch: `${note.pitch}${note.octave}`,
+                duration: note.duration,
+                beatIndex: bar.index * bar.beats.length + beat.index
+              });
+            }
           });
         });
       });
@@ -482,6 +509,50 @@ export const EditorPage = () => {
     );
   };
 
+  const handleAddRest = (staffId: string, barIndex: number, beatIndex: number, duration: NoteDuration) => {
+    setStaffs(prevStaffs =>
+      prevStaffs.map(staff => {
+        if (staff.id === staffId) {
+          const updatedBars = staff.bars.map((bar, bIdx) => {
+            if (bIdx === barIndex) {
+              const updatedBeats = bar.beats.map((beat, btIdx) => {
+                if (btIdx === beatIndex) {
+                  const newRest = {
+                    id: `rest-${Date.now()}-${Math.random()}`,
+                    type: 'rest',
+                    duration,
+                    beatIndex,
+                    subdivisionOffset: 0,
+                    visualOffsetX: 0,
+                    visualOffsetY: 0,
+                    pitch: 'R',
+                    octave: 0,
+                    velocity: 0,
+                  };
+                  return {
+                    ...beat,
+                    notes: [...beat.notes, newRest as unknown as typeof beat.notes[0]]
+                  };
+                }
+                return beat;
+              });
+              return {
+                ...bar,
+                beats: updatedBeats
+              };
+            }
+            return bar;
+          });
+          return {
+            ...staff,
+            bars: updatedBars
+          };
+        }
+        return staff;
+      })
+    );
+  };
+
   if (project.isLoading) {
     return <div style={{color: '#fff', padding: '20px'}}>Loading project...</div>;
   }
@@ -541,20 +612,6 @@ export const EditorPage = () => {
           />
 
           <Dropdown
-            options={noteOptions}
-            value={selectedDuration}
-            onChange={(value) => setSelectedDuration(value as NoteDuration)}
-            placeholder="Select Note"
-          />
-          
-          <Dropdown
-            options={restOptions}
-            value={selectedRest}
-            onChange={setSelectedRest}
-            placeholder="Select Rest"
-          />
-          
-          <Dropdown
             options={videoOptions}
             value={videoResolution}
             onChange={setVideoResolution}
@@ -587,25 +644,83 @@ export const EditorPage = () => {
         </div>
       </div>
 
-      {/* BODY */}
+      {/* MIDDLE CONTAINER */}
       <div style={{
         flex: 1,
-        backgroundColor: '#151515',
-        padding: '16px',
-        overflow: 'auto'
+        display: 'flex',
+        flexDirection: 'row',
+        overflow: 'hidden'
       }}>
+        {/* SIDEBAR TOOLBAR */}
         <div style={{
+          width: '50px',
           backgroundColor: '#222',
-          borderRadius: '6px',
-          padding: '0',
-          height: 'calc(100% - 40px)',
-          border: '1px solid #333',
-          overflowX: 'auto',
+          borderRight: '1px solid #444',
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          padding: '16px 0',
+          gap: '16px',
           overflowY: 'auto'
         }}>
-          <h2 style={{ margin: '0 0 8px 0', color: '#f0f0f0', fontSize: '16px', padding: '10px' }}>
-            Staff Editor - Mode: {mode} - Selected: {selectedStaffId}
-          </h2>
+          {/* Notes Selection */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', alignItems: 'center' }}>
+            <div style={{ fontSize: '10px', color: '#888', textTransform: 'uppercase', marginBottom: '4px' }}>Notes</div>
+            {noteOptions.map(opt => (
+              <ToolboxButton
+                key={opt.value}
+                active={selectedDuration === opt.value}
+                onClick={() => {
+                  setSelectedDuration(opt.value as NoteDuration);
+                  setSelectedRest(''); // clear rest selection when note is selected
+                }}
+                icon={opt.icon}
+                label={opt.label + ' Note'}
+              />
+            ))}
+          </div>
+
+          <div style={{ width: '30px', height: '1px', backgroundColor: '#444' }} />
+
+          {/* Rests Selection */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', alignItems: 'center' }}>
+            <div style={{ fontSize: '10px', color: '#888', textTransform: 'uppercase', marginBottom: '4px' }}>Rests</div>
+            {restOptions.map(opt => (
+              <ToolboxButton
+                key={opt.value}
+                active={selectedRest === opt.value}
+                onClick={() => {
+                  setSelectedRest(opt.value);
+                  // Update duration to match the rest size so they take correct space
+                  const noteValue = opt.value.replace('-rest', '') as NoteDuration;
+                  setSelectedDuration(noteValue);
+                }}
+                icon={opt.icon}
+                label={opt.label + ' Rest'}
+              />
+            ))}
+          </div>
+        </div>
+
+        {/* MAIN CANVAS AREA */}
+        <div style={{
+          flex: 1,
+          backgroundColor: '#151515',
+          padding: '16px',
+          overflow: 'auto'
+        }}>
+          <div style={{
+            backgroundColor: '#222',
+            borderRadius: '6px',
+            padding: '0',
+            height: 'calc(100% - 40px)',
+            border: '1px solid #333',
+            overflowX: 'auto',
+            overflowY: 'auto'
+          }}>
+            <h2 style={{ margin: '0 0 8px 0', color: '#f0f0f0', fontSize: '16px', padding: '10px' }}>
+              Staff Editor - Mode: {mode} - Selected: {selectedStaffId}
+            </h2>
           {staffs.map(staff => {
             // Calculate canvas width based on number of bars
             const barStartX = 130;
@@ -618,6 +733,10 @@ export const EditorPage = () => {
                 staff={staff}
                 playheadPosition={cursorPosition}
                 darkMode={true}
+                selectedTool={{
+                  type: selectedRest ? MusicalElementType.REST : MusicalElementType.NOTE,
+                  duration: selectedDuration as never
+                }}
                 selectedDuration={selectedDuration}
                 selectedRest={selectedRest}
                 mode={mode}
@@ -625,6 +744,7 @@ export const EditorPage = () => {
                 onRemoveBar={handleRemoveBar}
                 onPlayheadChange={handlePlayheadChange}
                 onAddNote={handleAddNote}
+                onAddRest={handleAddRest}
                 onRemoveNote={handleRemoveNote}
                 onMoveNote={handleMoveNote}
                 width={canvasWidth}
@@ -632,6 +752,7 @@ export const EditorPage = () => {
               />
             );
           })}
+          </div>
         </div>
       </div>
 

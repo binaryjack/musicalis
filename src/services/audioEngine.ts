@@ -46,7 +46,10 @@ export const createAudioEngine = function() {
     return currentInstrumentName;
   };
 
-  const convertNoteToPitch = function(note: MusicNote): string {
+  const convertNoteToPitch = function(note: MusicNote | string): string {
+    if (note.match(/\d+$/)) {
+      return note; // Already has octave
+    }
     return `${note}4`; // Default to 4th octave
   };
 
@@ -62,14 +65,18 @@ export const createAudioEngine = function() {
   };
 
   const playNote = async function(note: MusicNote, duration: NoteDuration = 'quarter', velocity: number = 0.8) {
+    if (Tone.context.state !== 'running') {
+      await Tone.start();
+    }
+    
     if (!isInitialized) {
-      console.warn('AudioEngine not initialized. Call initialize() first.');
-      return;
+      await initialize();
     }
 
     if (instrument && note) {
       try {
-        instrument.play(note, undefined, {
+        const pitch = convertNoteToPitch(note);
+        instrument.play(pitch, undefined, {
           duration: 0.5,
           gain: velocity / 127
         });
@@ -101,11 +108,26 @@ export const createAudioEngine = function() {
     }));
     
     currentSequence = new Tone.Part((time, noteData) => {
-      synth.triggerAttackRelease(noteData.note.pitch, noteData.note.duration, time, noteData.note.velocity);
+      if (instrument) {
+        try {
+          instrument.play(noteData.note.pitch, time, {
+            duration: Tone.Time(noteData.note.duration).toSeconds(),
+            gain: noteData.note.velocity / 127
+          });
+        } catch {
+          synth.triggerAttackRelease(noteData.note.pitch, noteData.note.duration, time, noteData.note.velocity);
+        }
+      } else {
+        synth.triggerAttackRelease(noteData.note.pitch, noteData.note.duration, time, noteData.note.velocity);
+      }
     }, sequence);
+    currentSequence.start(0);
   };
 
   const play = async function() {
+    if (Tone.context.state !== 'running') {
+      await Tone.start();
+    }
     if (!isInitialized) await initialize();
     await transport.start();
   };
