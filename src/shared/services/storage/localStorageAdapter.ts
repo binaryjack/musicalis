@@ -4,13 +4,13 @@ import type { IStorageAdapter } from './storageAdapter.interface';
  * LocalStorage adapter implementation for Phase 1 testing
  * Provides persistence layer with quota management
  */
-export class LocalStorageAdapter implements IStorageAdapter {
-  private readonly prefix = 'musicalist_';
-  private readonly quotaWarningThreshold = 0.85; // 85%
+export const createLocalStorageAdapter = function(): IStorageAdapter {
+  const prefix = 'musicalist_';
+  const quotaWarningThreshold = 0.85; // 85%
 
-  async save(key: string, data: unknown): Promise<void> {
+  const save = async function(key: string, data: unknown): Promise<void> {
     try {
-      const fullKey = `${this.prefix}${key}`;
+      const fullKey = `${prefix}${key}`;
       const serialized = JSON.stringify({
         version: 1,
         timestamp: Date.now(),
@@ -20,8 +20,8 @@ export class LocalStorageAdapter implements IStorageAdapter {
       localStorage.setItem(fullKey, serialized);
 
       // Check usage and warn if needed
-      const usage = await this.getUsagePercent();
-      if (usage > this.quotaWarningThreshold) {
+      const usage = await getUsagePercent();
+      if (usage > quotaWarningThreshold) {
         console.warn(
           `LocalStorage usage at ${(usage * 100).toFixed(1)}%. Consider exporting and cleaning old projects.`
         );
@@ -34,11 +34,11 @@ export class LocalStorageAdapter implements IStorageAdapter {
       }
       throw error;
     }
-  }
+  };
 
-  async load(key: string): Promise<unknown | null> {
+  const load = async function(key: string): Promise<unknown | null> {
     try {
-      const fullKey = `${this.prefix}${key}`;
+      const fullKey = `${prefix}${key}`;
       const serialized = localStorage.getItem(fullKey);
 
       if (!serialized) {
@@ -57,32 +57,32 @@ export class LocalStorageAdapter implements IStorageAdapter {
       console.error('Error loading from localStorage:', error);
       return null;
     }
-  }
+  };
 
-  async clear(key?: string): Promise<void> {
+  const clear = async function(key?: string): Promise<void> {
     if (key) {
-      const fullKey = `${this.prefix}${key}`;
+      const fullKey = `${prefix}${key}`;
       localStorage.removeItem(fullKey);
     } else {
       // Clear all musicalist keys
       const keysToRemove = [];
       for (let i = 0; i < localStorage.length; i++) {
         const key = localStorage.key(i);
-        if (key?.startsWith(this.prefix)) {
+        if (key?.startsWith(prefix)) {
           keysToRemove.push(key);
         }
       }
       keysToRemove.forEach((key) => localStorage.removeItem(key));
     }
-  }
+  };
 
-  async getUsagePercent(): Promise<number> {
+  const getUsagePercent = async function(): Promise<number> {
     try {
       let totalSize = 0;
 
       for (let i = 0; i < localStorage.length; i++) {
         const key = localStorage.key(i);
-        if (key?.startsWith(this.prefix)) {
+        if (key?.startsWith(prefix)) {
           const value = localStorage.getItem(key);
           if (value) {
             totalSize += value.length;
@@ -97,5 +97,12 @@ export class LocalStorageAdapter implements IStorageAdapter {
       console.error('Error calculating storage usage:', error);
       return 0;
     }
-  }
-}
+  };
+
+  return Object.freeze({
+    save,
+    load,
+    clear,
+    getUsagePercent
+  });
+};

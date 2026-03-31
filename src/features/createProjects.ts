@@ -14,7 +14,7 @@ type StorageAdapter = {
   readonly save: (key: string, data: unknown) => Promise<void>;
 };
 
-export const createProjects = function(this: any, 
+export const createProjects = function(
   storage: StorageAdapter,
   initialState: ProjectsState
 ) {

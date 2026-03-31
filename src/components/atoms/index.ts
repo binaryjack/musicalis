@@ -1,9 +1,9 @@
-export * from "./button";
-export * from "./color-picker";
-export * from "./input";
-export * from "./label";
-export * from "./select";
-export * from "./slider";
-export * from "./time-signature-control";
-export * from "./modal";
-export * from "./confirm-modal";
+export { Button, type ButtonProps } from './button';
+export { ColorPicker, type ColorPickerProps } from './color-picker';
+export { Input, type InputProps } from './input';
+export { Label, type LabelProps } from './label';
+export { Select, type SelectProps } from './select';
+export { Slider, type SliderProps } from './slider';
+export { TimeSignatureControl, type TimeSignatureControlProps } from './time-signature-control';
+export { Modal, type ModalProps } from './modal';
+export { ConfirmModal, type ConfirmModalProps } from './confirm-modal';

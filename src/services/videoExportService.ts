@@ -6,43 +6,43 @@ export interface VideoExportService {
   isExporting: boolean;
 }
 
-class VideoExportServiceImpl implements VideoExportService {
-  private isCurrentlyExporting = false;
-  private shouldCancel = false;
+export const createVideoExportService = function(): VideoExportService {
+  let isCurrentlyExporting = false;
+  let shouldCancel = false;
   
-  get isExporting() {
-    return this.isCurrentlyExporting;
-  }
+  const delay = function(ms: number): Promise<void> {
+    return new Promise(resolve => setTimeout(resolve, ms));
+  };
   
-  async exportVideo(
+  const exportVideo = async function(
     options: VideoExportOptions, 
     onProgress: (progress: number) => void
   ): Promise<Blob> {
-    if (this.isCurrentlyExporting) {
+    if (isCurrentlyExporting) {
       throw new Error('Export already in progress');
     }
     
-    this.isCurrentlyExporting = true;
-    this.shouldCancel = false;
+    isCurrentlyExporting = true;
+    shouldCancel = false;
     
     try {
       // Mock export process
       onProgress(0);
-      await this.delay(200);
+      await delay(200);
       
-      if (this.shouldCancel) throw new Error('Export cancelled');
+      if (shouldCancel) throw new Error('Export cancelled');
       onProgress(25);
-      await this.delay(300);
+      await delay(300);
       
-      if (this.shouldCancel) throw new Error('Export cancelled');
+      if (shouldCancel) throw new Error('Export cancelled');
       onProgress(50);
-      await this.delay(400);
+      await delay(400);
       
-      if (this.shouldCancel) throw new Error('Export cancelled');
+      if (shouldCancel) throw new Error('Export cancelled');
       onProgress(75);
-      await this.delay(300);
+      await delay(300);
       
-      if (this.shouldCancel) throw new Error('Export cancelled');
+      if (shouldCancel) throw new Error('Export cancelled');
       onProgress(100);
       
       // Create mock video blob
@@ -50,20 +50,22 @@ class VideoExportServiceImpl implements VideoExportService {
       return new Blob([mockVideoData], { type: `video/${options.format}` });
       
     } finally {
-      this.isCurrentlyExporting = false;
+      isCurrentlyExporting = false;
     }
-  }
+  };
   
-  cancelExport() {
-    this.shouldCancel = true;
-  }
+  const cancelExport = function() {
+    shouldCancel = true;
+  };
   
-  private delay(ms: number): Promise<void> {
-    return new Promise(resolve => setTimeout(resolve, ms));
-  }
-}
+  return Object.freeze({
+    exportVideo,
+    cancelExport,
+    get isExporting() { return isCurrentlyExporting; }
+  });
+};
 
-export const videoExportService = new VideoExportServiceImpl();
+export const videoExportService = createVideoExportService();
 
 // Utility functions
 export const videoExportUtils = {

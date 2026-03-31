@@ -3,7 +3,7 @@ declare module 'soundfont-player' {
     format?: 'mp3' | 'ogg';
     soundfont?: 'FluidR3_GM' | 'MusyngKite';
     nameToUrl?: (name: string, soundfont: string, format: string) => string;
-    destination?: any;
+    destination?: AudioDestinationNode;
     gain?: number;
     attack?: number;
     decay?: number;
@@ -22,7 +22,7 @@ declare module 'soundfont-player' {
   }
 
   export function instrument(
-    audioContext: AudioContext | any,
+    audioContext: AudioContext | BaseAudioContext,
     instrumentName: string,
     options?: PlayerOptions
   ): Promise<InstrumentPlayer>;

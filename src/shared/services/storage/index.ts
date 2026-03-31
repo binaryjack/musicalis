@@ -1,5 +1,5 @@
 import type { IStorageAdapter } from './storageAdapter.interface';
-import { LocalStorageAdapter } from './localStorageAdapter';
+import { createLocalStorageAdapter } from './localStorageAdapter';
 
 /**
  * Factory for creating storage adapters
@@ -8,19 +8,19 @@ import { LocalStorageAdapter } from './localStorageAdapter';
 export const createStorageAdapter = (type: 'localStorage' | 'indexedDB' | 'database' = 'localStorage'): IStorageAdapter => {
   switch (type) {
     case 'localStorage':
-      return new LocalStorageAdapter();
+      return createLocalStorageAdapter();
     case 'indexedDB':
       // TODO: Implement IndexedDBAdapter for Phase 2
       console.warn('IndexedDB adapter not yet implemented, falling back to localStorage');
-      return new LocalStorageAdapter();
+      return createLocalStorageAdapter();
     case 'database':
       // TODO: Implement DatabaseAdapter for Phase 3
       console.warn('Database adapter not yet implemented, falling back to localStorage');
-      return new LocalStorageAdapter();
+      return createLocalStorageAdapter();
     default:
-      return new LocalStorageAdapter();
+      return createLocalStorageAdapter();
   }
 };
 
 export type { IStorageAdapter } from './storageAdapter.interface';
-export { LocalStorageAdapter } from './localStorageAdapter';
+export { createLocalStorageAdapter } from './localStorageAdapter';

@@ -78,9 +78,9 @@ export const createAppStore = function(storage: StorageAdapter): AppStore {
   };
   
   // Create feature instances
-  const editor = new (createEditor as any)(initialEditorState);
-  const projects = new (createProjects as any)(storage, initialProjectsState);
-  const settings = new (createSettings as any)(storage, initialSettingsState);
+  const editor = createEditor(initialEditorState);
+  const projects = createProjects(storage, initialProjectsState);
+  const settings = createSettings(storage, initialSettingsState);
   
   let currentState: AppState = {
     editor: editor.state,

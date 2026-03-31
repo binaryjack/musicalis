@@ -1,6 +1,3 @@
-import { useState, useCallback, useEffect } from 'react';
-import { useDispatch, useSelector } from 'react-redux';
-import type { RootState } from '../../../store/store';
 import type { Project } from '../../../types/models';
 import type { ExportFormat, ExportQuality } from '../../../types/enums/export.enums';
 
@@ -8,11 +5,12 @@ import type { ExportFormat, ExportQuality } from '../../../types/enums/export.en
 const setStatus = (status: string) => ({ type: 'videoExport/setStatus', payload: status });
 const setIsReady = (ready: boolean) => ({ type: 'videoExport/setIsReady', payload: ready });
 const setError = (error: string) => ({ type: 'videoExport/setError', payload: error });
-const startExport = (config: any) => ({ type: 'videoExport/startExport', payload: config });
+const startExport = (config: { projectId: string; format: ExportFormat; quality: ExportQuality; outputFileName: string }) => ({ type: 'videoExport/startExport', payload: config });
 const setProgress = (progress: number) => ({ type: 'videoExport/setProgress', payload: progress });
 const completeExport = () => ({ type: 'videoExport/completeExport' });
 const cancelExport = () => ({ type: 'videoExport/cancelExport' });
 const clearError = () => ({ type: 'videoExport/clearError' });
+
 interface FFmpegWorker {
   load(): Promise<void>;
   writeFile(name: string, data: Uint8Array): Promise<void>;
@@ -21,34 +19,34 @@ interface FFmpegWorker {
   deleteFile(name: string): Promise<void>;
 }
 
-export class VideoExporter {
-  private ffmpeg: FFmpegWorker | null = null;
-  private isLoaded = false;
+export const createVideoExporter = function() {
+  let ffmpeg: FFmpegWorker | null = null;
+  let isLoaded = false;
 
-  async initialize(): Promise<void> {
-    if (this.isLoaded) return;
+  const initialize = async function(): Promise<void> {
+    if (isLoaded) return;
 
     try {
       // FFmpeg.wasm will be integrated here
       // const { createFFmpeg } = await import('@ffmpeg/ffmpeg');
-      // this.ffmpeg = createFFmpeg({ log: true });
-      // await this.ffmpeg.load();
+      // ffmpeg = createFFmpeg({ log: true });
+      // await ffmpeg.load();
       
       console.log('Video exporter initialized (placeholder)');
-      this.isLoaded = true;
+      isLoaded = true;
     } catch (error) {
       console.error('Failed to initialize video exporter:', error);
       throw error;
     }
-  }
+  };
 
-  async exportProject(
+  const exportProject = async function(
     _project: Project,
     _format: ExportFormat,
     _quality: ExportQuality,
     onProgress?: (progress: number) => void
   ): Promise<Uint8Array> {
-    if (!this.isLoaded) {
+    if (!isLoaded) {
       throw new Error('Video exporter not initialized');
     }
 
@@ -76,55 +74,51 @@ export class VideoExporter {
       console.error('Export failed:', error);
       throw error;
     }
-  }
+  };
 
-  async dispose(): Promise<void> {
-    if (this.ffmpeg) {
+  const dispose = async function(): Promise<void> {
+    if (ffmpeg) {
       // Cleanup FFmpeg worker
-      this.ffmpeg = null;
+      ffmpeg = null;
     }
-    this.isLoaded = false;
-  }
-}
+    isLoaded = false;
+  };
 
-export const useVideoExport = () => {
-  const dispatch = useDispatch();
-  const videoExportState = useSelector((state: RootState) => state.videoExport);
-  const [exporter] = useState<VideoExporter>(() => new VideoExporter());
+  return Object.freeze({
+    initialize,
+    exportProject,
+    dispose
+  });
+};
+
+export const createVideoExportService = function() {
+  const exporter = createVideoExporter();
   
-  const initializeExporter = useCallback(async () => {
+  const initializeExporter = async function() {
     try {
-      dispatch(setStatus('preparing'));
       await exporter.initialize();
-      dispatch(setIsReady(true));
-      dispatch(setStatus('idle'));
+      return { success: true };
     } catch (error) {
-      dispatch(setError(
-        error instanceof Error ? error.message : 'Failed to initialize exporter'
-      ));
-      dispatch(setStatus('error'));
+      return { 
+        success: false, 
+        error: error instanceof Error ? error.message : 'Failed to initialize exporter' 
+      };
     }
-  }, [dispatch, exporter]);
+  };
 
-  const exportProject = useCallback(async (
+  const exportProject = async function(
     project: Project,
     format: ExportFormat = 'mp4',
     quality: ExportQuality = 'medium'
-  ) => {
+  ) {
     try {
-      dispatch(startExport({
-        projectId: project.id,
-        format,
-        quality,
-        outputFileName: `${project.name}_export.${format}`
-      }));
-
       const videoData = await exporter.exportProject(
         project,
         format,
         quality,
         (progress) => {
-          dispatch(setProgress(progress));
+          // Progress callback can be handled by caller
+          console.log(`Export progress: ${progress}%`);
         }
       );
 
@@ -145,37 +139,22 @@ export const useVideoExport = () => {
       document.body.removeChild(link);
       URL.revokeObjectURL(url);
 
-      dispatch(completeExport());
+      return { success: true };
     } catch (error) {
-      dispatch(setError(
-        error instanceof Error ? error.message : 'Export failed'
-      ));
+      return { 
+        success: false,
+        error: error instanceof Error ? error.message : 'Export failed' 
+      };
     }
-  }, [dispatch, exporter]);
-
-  const cancelExportFn = useCallback(() => {
-    dispatch(cancelExport());
-  }, [dispatch]);
-
-  const clearErrorFn = useCallback(() => {
-    dispatch(clearError());
-  }, [dispatch]);
-
-  // Initialize on mount
-  useEffect(() => {
-    // Skip initialization check for now
-    initializeExporter();
-
-    return () => {
-      exporter.dispose();
-    };
-  }, [initializeExporter, exporter]);
-
-  return {
-    ...videoExportState,
-    exportProject,
-    cancelExport: cancelExportFn,
-    clearError: clearErrorFn,
-    initializeExporter,
   };
+
+  const cleanup = function() {
+    exporter.dispose();
+  };
+
+  return Object.freeze({
+    initializeExporter,
+    exportProject,
+    cleanup
+  });
 };

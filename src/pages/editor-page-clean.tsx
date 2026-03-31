@@ -16,7 +16,7 @@ import {
     initializeStaff,
     parseTimeSignature
 } from '../shared/utils/music-helpers';
-import type { NoteDuration, Staff } from '../types/musicTypes';
+import type { MusicNote, NoteDuration, Staff } from '../types/musicTypes';
 
 import { MIDI_INSTRUMENTS } from '../shared/utils/midi-instruments';
 
@@ -192,7 +192,7 @@ export const EditorPage = () => {
     allNotes.sort((a, b) => a.beatIndex - b.beatIndex);
     
     playback.loadNotes(allNotes.map(n => ({
-      pitch: n.pitch as any,
+      pitch: n.pitch as MusicNote,
       duration: n.duration as NoteDuration,
       beatIndex: n.beatIndex
     })));
@@ -369,7 +369,7 @@ export const EditorPage = () => {
     setStaffs(prevStaffs => 
       prevStaffs.map(staff => {
         if (staff.id === staffId) {
-          let noteToMove: any = null;
+          let noteToMove: Note | null = null;
           
           // First pass: find and remove the note
           const tempBars = staff.bars.map((bar, bIdx) => {
@@ -395,7 +395,7 @@ export const EditorPage = () => {
           if (noteToMove.pitch !== pitch || noteToMove.octave !== octave) {
             try {
               if (playback && typeof playback.playNote === 'function') {
-                playback.playNote(`${pitch}${octave}` as any, noteToMove.duration);
+                playback.playNote(`${pitch}${octave}` as MusicNote, noteToMove.duration);
               }
             } catch (e) {
               console.warn("Could not play note preview", e);
@@ -433,7 +433,7 @@ export const EditorPage = () => {
     // Play preview automatically
     try {
       if (playback && typeof playback.playNote === 'function') {
-        playback.playNote(`${pitch}${octave}` as any, duration);
+        playback.playNote(`${pitch}${octave}` as MusicNote, duration);
       }
     } catch (e) {
       console.warn("Could not play note preview", e);

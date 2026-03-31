@@ -1,7 +1,10 @@
 import { put, takeEvery, select } from 'redux-saga/effects';
 import { playbackActions } from './playbackSlice';
-import { PlayheadScrollManager } from '../services/playheadScrollManager';
+import { createPlayheadScrollManager } from '../services/playheadScrollManager';
 import type { RootState } from '../../../store/store';
+
+// Create playhead scroll manager instance
+const playheadScrollManager = createPlayheadScrollManager();
 
 /**
  * Update playhead scroll position on time change
@@ -25,7 +28,7 @@ function* updatePlayheadScrollSaga() {
     const playheadXPosition = (currentTime / 1000) * pixelsPerSecond;
     const playheadYPosition = 0; // TODO: Update based on active staff
 
-    const scrollStates = PlayheadScrollManager.getScrollStatesBoth(
+    const scrollStates = playheadScrollManager.getScrollStatesBoth(
       playheadXPosition,
       playheadYPosition,
       contentWidth,

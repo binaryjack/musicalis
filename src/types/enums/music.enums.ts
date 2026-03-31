@@ -72,6 +72,29 @@ export const MetronomeSoundType = {
 export type MetronomeSoundType = typeof MetronomeSoundType[keyof typeof MetronomeSoundType];
 
 /**
+ * Rest types corresponding to note durations
+ */
+export const RestType = {
+  WHOLE_REST: 'whole-rest',
+  HALF_REST: 'half-rest',
+  QUARTER_REST: 'quarter-rest',
+  EIGHTH_REST: 'eighth-rest',
+  SIXTEENTH_REST: 'sixteenth-rest',
+} as const;
+
+export type RestType = typeof RestType[keyof typeof RestType];
+
+/**
+ * Musical element type - either note or rest
+ */
+export const MusicalElementType = {
+  NOTE: 'note',
+  REST: 'rest',
+} as const;
+
+export type MusicalElementType = typeof MusicalElementType[keyof typeof MusicalElementType];
+
+/**
  * Audio quality tiers with sample rates
  */
 export const AudioQuality = {

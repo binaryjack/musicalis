@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Stave, StaveNote, Formatter, Renderer, Voice } from 'vexflow';
 import type { PianoStaff } from '../../types/musicTypes';
 import type { ProjectData } from '../../services/projectService';
 import type { EditorMode } from '../../types/enums';

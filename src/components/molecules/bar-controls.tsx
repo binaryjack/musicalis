@@ -14,4 +14,4 @@ export interface BarControlsProps {
   disabled?: boolean;
 }
 
-export const BarControls = function(props: BarControlsProps) { return (<div className="bar-controls"><Button onClick={props.onAddBar}>Add Bar</Button><Button onClick={props.onRemoveBar} variant="danger">Remove Bar</Button><div className="tempo-control"><Label>Tempo</Label><Input type="number" value={props.tempo} onChange={(v: any) => props.onTempoChange && props.onTempoChange(Number(v))} /></div></div>); };
+export const BarControls = function(props: BarControlsProps) { return (<div className="bar-controls"><Button onClick={props.onAddBar}>Add Bar</Button><Button onClick={props.onRemoveBar} variant="danger">Remove Bar</Button><div className="tempo-control"><Label>Tempo</Label><Input type="number" value={props.tempo} onChange={(v: string) => props.onTempoChange && props.onTempoChange(Number(v))} /></div></div>); };

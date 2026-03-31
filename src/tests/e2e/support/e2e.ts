@@ -24,9 +24,8 @@ beforeEach(() => {
 
 // Handle uncaught exceptions during tests
 Cypress.on('uncaught:exception', (err, runnable) => {
-  // Ignore VexFlow and audio context errors during testing
-  if (err.message.includes('VexFlow') || 
-      err.message.includes('AudioContext') ||
+  // Ignore audio context errors during testing
+  if (err.message.includes('AudioContext') ||
       err.message.includes('Web Audio API')) {
     return false;
   }

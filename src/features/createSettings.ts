@@ -13,7 +13,7 @@ type StorageAdapter = {
   readonly save: (key: string, data: unknown) => Promise<void>;
 };
 
-export const createSettings = function(this: any, 
+export const createSettings = function(
   storage: StorageAdapter,
   initialState: SettingsState
 ) {

@@ -1,6 +1,8 @@
 import * as Tone from 'tone';
 import Soundfont from 'soundfont-player';
 import type { MusicNote, NoteDuration } from '../types/musicTypes';
+import { isNote, getDurationInMs } from '../shared/utils/musical-elements';
+import type { MusicalNote, AudioElement } from '../types/models/note.model';
 
 export interface AudioNote {
   pitch: MusicNote;
@@ -10,15 +12,19 @@ export interface AudioNote {
 }
 
 export const createAudioEngine = function() {
-  const masterVolume = new Tone.Volume(Tone.gainToDb(0.8)).toDestination();
-  const synth = new Tone.PolySynth(Tone.Synth).connect(masterVolume);
-  const transport = Tone.Transport;
-  
+  let synth: Tone.PolySynth;
   let instrument: Soundfont.InstrumentPlayer | null = null;
   let currentInstrumentName = 'acoustic_grand_piano';
+  let masterVolume: Tone.Volume;
+  let transport: typeof Tone.Transport;
   let currentSequence: Tone.Part | null = null;
   let isInitialized = false;
-  let volume = 0.8;
+  let _volume = 0.8;
+
+  // Initialize components
+  masterVolume = new Tone.Volume(Tone.gainToDb(0.8)).toDestination();
+  synth = new Tone.PolySynth(Tone.Synth).connect(masterVolume);
+  transport = Tone.Transport;
   
   // Configure default settings
   synth.set({
@@ -61,7 +67,25 @@ export const createAudioEngine = function() {
     return durations[duration] ?? '4n';
   };
 
-  const playNote = async function(note: MusicNote, duration: NoteDuration = 'quarter', velocity: number = 0.8) {
+  const convertMusicalElementToAudio = function(element: MusicalNote, startTime: number, bpm: number): AudioElement {
+    if (!isNote(element)) {
+      return {
+        type: 'rest' as const,
+        startTime,
+        duration: getDurationInMs(element.duration, bpm)
+      };
+    }
+
+    return {
+      type: 'note' as const,
+      pitch: element.pitch,
+      startTime,
+      duration: getDurationInMs(element.duration, bpm),
+      velocity: element.velocity || 64
+    };
+  };
+
+  const playNote = function(note: MusicNote, duration: NoteDuration = 'quarter', velocity = 0.8) {
     if (!isInitialized) {
       console.warn('AudioEngine not initialized. Call initialize() first.');
       return;
@@ -69,24 +93,38 @@ export const createAudioEngine = function() {
 
     if (instrument && note) {
       try {
-        instrument.play(note, undefined, {
-          duration: 0.5,
-          gain: velocity / 127
-        });
+        instrument.play(
+          note,
+          undefined,
+          {
+            duration: getDurationInMs(duration, 120) / 1000,
+            gain: (velocity || 64) / 127
+          }
+        );
       } catch (error) {
         console.error('Failed to play note with instrument:', error);
         const pitch = convertNoteToPitch(note);
         const time = convertDurationToTime(duration);
-        synth.triggerAttackRelease(pitch, time, undefined, velocity);
+        synth.triggerAttackRelease(
+          pitch,
+          time,
+          undefined,
+          (velocity || 64) / 127
+        );
       }
     } else {
       const pitch = convertNoteToPitch(note);
       const time = convertDurationToTime(duration);
-      synth.triggerAttackRelease(pitch, time, undefined, velocity);
+      synth.triggerAttackRelease(
+        pitch,
+        time,
+        undefined,
+        (velocity || 64) / 127
+      );
     }
   };
 
-  const loadSequence = function(notes: AudioNote[]) {
+  const loadSequence = function(notes: readonly AudioNote[]) {
     if (currentSequence) {
       currentSequence.dispose();
     }
@@ -100,8 +138,8 @@ export const createAudioEngine = function() {
       }
     }));
     
-    currentSequence = new Tone.Part((time, noteData) => {
-      synth.triggerAttackRelease(noteData.note.pitch, noteData.note.duration, time, noteData.note.velocity);
+    currentSequence = new Tone.Part((time, note) => {
+      synth.triggerAttackRelease(note.pitch, note.duration, time, note.velocity);
     }, sequence);
   };
 
@@ -123,62 +161,43 @@ export const createAudioEngine = function() {
     transport.position = position;
   };
 
-  const setTempo = function(bpm: number) {
-    transport.bpm.value = bpm;
-  };
-
-  const getTempo = function(): number {
-    return transport.bpm.value;
-  };
-
   const getCurrentTime = function(): number {
     return Number(transport.position);
+  };
+
+  const getDuration = function(): number {
+    return Number(transport.bpm.value);
   };
 
   const getIsPlaying = function(): boolean {
     return transport.state === 'started';
   };
 
-  const getIsPaused = function(): boolean {
-    return transport.state === 'paused';
-  };
-
-  const setVolume = function(newVolume: number) {
-    volume = Math.max(0, Math.min(1, newVolume));
-    masterVolume.volume.value = Tone.gainToDb(volume);
+  const setVolume = function(volume: number) {
+    _volume = Math.max(0, Math.min(1, volume));
+    masterVolume.volume.value = Tone.gainToDb(_volume);
   };
 
   const getVolume = function(): number {
-    return volume;
+    return _volume;
   };
 
-  const dispose = function() {
-    if (currentSequence) {
-      currentSequence.dispose();
-    }
-    synth.dispose();
-    masterVolume.dispose();
-  };
-
+  // Public API - frozen object per copilot instructions
   return Object.freeze({
     initialize,
     loadInstrument,
     getInstrumentName,
+    convertMusicalElementToAudio,
     playNote,
     loadSequence,
     play,
     pause,
     stop,
     seek,
-    setTempo,
-    getTempo,
     getCurrentTime,
-    get isPlaying() { return getIsPlaying(); },
-    get isPaused() { return getIsPaused(); },
+    getDuration,
+    isPlaying: getIsPlaying,
     setVolume,
-    getVolume,
-    dispose
+    getVolume
   });
 };
-
-export const audioEngine = createAudioEngine();

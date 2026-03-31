@@ -4,24 +4,29 @@ import {
     getClefGlyph,
     getFlagGlyph,
     getNoteHeadGlyph,
+    getRestGlyph,
     getTimeSignatureGlyphs
 } from '../../shared/utils/smufl-glyphs';
 import type { Note, NoteDuration, Staff } from '../../types/musicTypes';
+import type { MusicalTool } from './MusicalPalette';
+import { MusicalElementType } from '../../types';
 
-export interface MusicStaffCanvasProps {
+interface MusicStaffCanvasProps {
   staff: Staff;
-  mode?: 'design' | 'playback' | string;
+  mode: 'design' | 'playback';
   width?: number;
   height?: number;
   playheadPosition?: number;
   darkMode?: boolean;
   selectedDuration?: NoteDuration;
   selectedRest?: string;
+  selectedTool?: MusicalTool | null;
   onAddBar?: (staffId: string, afterBarIndex: number) => void;
   onRemoveBar?: (staffId: string, barIndex: number) => void;
   onNoteClick?: (noteId: string, staffId: string) => void;
   onPlayheadChange?: (position: number) => void;
   onAddNote?: (staffId: string, barIndex: number, beatIndex: number, pitch: string, octave: number, duration: NoteDuration) => void;
+  onAddRest?: (staffId: string, barIndex: number, beatIndex: number, duration: NoteDuration) => void;
   onRemoveNote?: (staffId: string, barIndex: number, beatIndex: number, noteId: string) => void;
   onMoveNote?: (staffId: string, sourceBarIndex: number, sourceBeatIndex: number, noteId: string, targetBarIndex: number, targetBeatIndex: number, pitch: string, octave: number) => void;
 }
@@ -49,10 +54,12 @@ export const MusicStaffCanvas = function(props: MusicStaffCanvasProps) {
     playheadPosition = 0,
     darkMode = false,
     selectedDuration = 'quarter',
+    selectedTool,
     onAddBar,
     onRemoveBar,
     onPlayheadChange,
     onAddNote,
+    onAddRest,
     onRemoveNote,
     onMoveNote,
   } = props;
@@ -320,28 +327,40 @@ export const MusicStaffCanvas = function(props: MusicStaffCanvasProps) {
         
         const beatX = barX + (beatIndex * beatWidth) + (beatWidth / 2);
         
-        // Draw each note in this beat
+        // Draw each note/rest in this beat
         beat.notes.forEach(note => {
           if (draggedNote && draggedNote.note.id === note.id) {
             return; // don't draw original, it will be drawn at current position
           }
 
-          const noteY = getNoteY(note.pitch, note.octave);
-          const adjustedX = beatX + (note.visualOffsetX || 0);
-          const adjustedY = noteY + (note.visualOffsetY || 0);
-          
-          // Draw ledger lines
-          drawLedgerLines(ctx, adjustedX - 2, noteY, lineColor);
+          // Check if this is a rest or a note
+          if ((note as any).type === 'rest') {
+            // Render rest
+            const restY = staffTop + 20; // Center rest on staff
+            const adjustedX = beatX + (note.visualOffsetX || 0);
+            
+            ctx.font = `${RenderConfig.noteFontSize}px Bravura`;
+            ctx.fillStyle = textColor;
+            const restGlyph = getRestGlyph(note.duration);
+            ctx.fillText(restGlyph, adjustedX - 8, restY);
+          } else {
+            // Render note (existing logic)
+            const noteY = getNoteY(note.pitch, note.octave);
+            const adjustedX = beatX + (note.visualOffsetX || 0);
+            const adjustedY = noteY + (note.visualOffsetY || 0);
+            
+            // Draw ledger lines
+            drawLedgerLines(ctx, adjustedX - 2, noteY, lineColor);
 
-          // Draw note head
-          ctx.font = `${RenderConfig.noteFontSize}px Bravura`;
-          ctx.fillStyle = textColor;
-          const noteHeadGlyph = getNoteHeadGlyph(note.duration);
-          ctx.fillText(noteHeadGlyph, adjustedX - 8, adjustedY);
-          
-          // Draw stem (for quarter notes and shorter)
-          if (note.duration === 'quarter' || note.duration === 'eighth' || note.duration === 'sixteenth') {
-            ctx.strokeStyle = textColor;
+            // Draw note head
+            ctx.font = `${RenderConfig.noteFontSize}px Bravura`;
+            ctx.fillStyle = textColor;
+            const noteHeadGlyph = getNoteHeadGlyph(note.duration);
+            ctx.fillText(noteHeadGlyph, adjustedX - 8, adjustedY);
+            
+            // Draw stem (for quarter notes and shorter)
+            if (note.duration === 'quarter' || note.duration === 'eighth' || note.duration === 'sixteenth') {
+              ctx.strokeStyle = textColor;
             ctx.lineWidth = RenderConfig.stemThickness;
             ctx.beginPath();
             ctx.moveTo(adjustedX + 4, adjustedY);
@@ -362,6 +381,7 @@ export const MusicStaffCanvas = function(props: MusicStaffCanvasProps) {
             ctx.font = `${RenderConfig.noteFontSize}px Bravura`;
             ctx.fillText(accidentalGlyph, adjustedX - 20, adjustedY);
           }
+          } // Close the else block for note rendering
         });
       });
     });
@@ -621,31 +641,35 @@ export const MusicStaffCanvas = function(props: MusicStaffCanvasProps) {
       const beatWidth = RenderConfig.barWidth / beatsPerBar;
       const beatIndex = Math.floor(xInBar / beatWidth);
 
-      // If clicked near staff lines (within staff area), add a note
-      if (mode === 'design' && y >= staffTop - 40 && y <= staffTop + barHeight + 40 && onAddNote) {
+      // If clicked near staff lines (within staff area), add a note or rest
+      if (mode === 'design' && y >= staffTop - 40 && y <= staffTop + barHeight + 40) {
         
-        // Prevent adding note if we clicked on an existing note
+        // Prevent adding note/rest if we clicked on an existing note
         if (getHitNote(x, y)) {
           return;
         }
 
         // Check if we're within valid bar/beat range
         if (barIndex >= 0 && barIndex < staff.bars.length && beatIndex >= 0 && beatIndex < beatsPerBar) {
-          // Check if note can fit in this beat
-          if (!canFitNote(barIndex, beatIndex, selectedDuration)) {
-            console.warn(`Cannot fit ${selectedDuration} note in beat ${beatIndex} - already full`);
+          const durationToUse = selectedTool?.duration || selectedDuration;
+          
+          // Check if note/rest can fit in this beat
+          if (!canFitNote(barIndex, beatIndex, durationToUse)) {
+            console.warn(`Cannot fit ${durationToUse} ${selectedTool?.type || 'note'} in beat ${beatIndex} - already full`);
             return;
           }
           
-          // Calculate snap position within beat for subdivision (for future use)
-          // const xInBeat = xInBar % beatWidth;
-          // const snappedXOffset = getSubdivisionSnap(xInBeat, beatWidth, selectedDuration);
-          
-          // Determine pitch based on Y position
-          const { pitch, octave } = getYToPitch(y);
-          
-          onAddNote(staff.id, barIndex, beatIndex, pitch, octave, selectedDuration);
-          return;
+          // Handle based on selected tool type
+          if (selectedTool?.type === MusicalElementType.REST && onAddRest) {
+            // Add rest - rests don't need pitch/octave
+            onAddRest(staff.id, barIndex, beatIndex, durationToUse);
+            return;
+          } else if ((selectedTool?.type === MusicalElementType.NOTE || !selectedTool) && onAddNote) {
+            // Add note - determine pitch based on Y position
+            const { pitch, octave } = getYToPitch(y);
+            onAddNote(staff.id, barIndex, beatIndex, pitch, octave, durationToUse);
+            return;
+          }
         }
       }
       
@@ -655,7 +679,7 @@ export const MusicStaffCanvas = function(props: MusicStaffCanvasProps) {
         onPlayheadChange?.(Math.max(0, totalBeats));
       }
     }
-  }, [staff, mode, onAddBar, onRemoveBar, onPlayheadChange, onAddNote, selectedDuration, canFitNote, getYToPitch, getHitNote]);
+  }, [staff, mode, onAddBar, onRemoveBar, onPlayheadChange, onAddNote, onAddRest, selectedDuration, selectedTool, canFitNote, getYToPitch, getHitNote]);
 
   /**
    * Handle mouse move for hover effects

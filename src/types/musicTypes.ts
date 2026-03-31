@@ -12,6 +12,38 @@ export const noteDuration = {
 export type NoteDuration = typeof noteDuration[keyof typeof noteDuration];
 
 /**
+ * Musical note pitches - scientific notation
+ */
+export const musicNote = {
+  // Basic notes without octave (for pitch class)
+  C: 'C',
+  D: 'D', 
+  E: 'E',
+  F: 'F',
+  G: 'G',
+  A: 'A',
+  B: 'B',
+  
+  // Scientific notation with octaves (commonly used)
+  'C4': 'C4',
+  'D4': 'D4', 
+  'E4': 'E4',
+  'F4': 'F4',
+  'G4': 'G4',
+  'A4': 'A4',
+  'B4': 'B4',
+  'C5': 'C5',
+  'D5': 'D5', 
+  'E5': 'E5',
+  'F5': 'F5',
+  'G5': 'G5',
+  'A5': 'A5',
+  'B5': 'B5',
+} as const;
+
+export type MusicNote = typeof musicNote[keyof typeof musicNote];
+
+/**
  * Pitch notation systems
  */
 export const pitchNotationSystem = {

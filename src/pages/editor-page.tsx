@@ -4,12 +4,8 @@ import { useProject } from '../hooks/useProject';
 import { usePlayback } from '../hooks/usePlayback';
 
 import { Toolbar } from '../components/organisms/toolbar';
-import { NoteSelector } from '../components/molecules/note-selector';
-import { DurationSelector } from '../components/molecules/duration-selector';
 import { VelocityControl } from '../components/molecules/velocity-control';
 import { BarControls } from '../components/molecules/bar-controls';
-import { PlaybackBar } from '../components/molecules/playback-bar';
-import { ColorPreview } from '../components/molecules/color-preview';
 // Advanced Components
 import { ResponsiveLayout } from '../components/organisms/responsive-layout';
 import { MultiStaffCanvas } from '../components/organisms/multi-staff-canvas';
@@ -19,10 +15,20 @@ import { BarManagement } from '../components/organisms/bar-management';
 import { AudioQualitySelector } from '../components/molecules/audio-quality-selector';
 import { ColorMappingEditor } from '../components/molecules/color-mapping-editor';
 import { MobileConstraintsProvider, MobileWarningDisplay } from '../components/organisms/mobile-constraints';
+import { MusicalPalette, type MusicalTool } from '../components/organisms/MusicalPalette/MusicalPalette';
 
 import type { MusicNote, NoteDuration, PianoStaff, VideoExportOptions } from '../types/musicTypes';
 import { musicNote, noteDuration } from '../types/musicTypes';
+import { MusicalElementType } from '../types';
+import { createRest } from '../shared/utils/musical-elements';
 import styles from './EditorPage.module.css';
+
+interface StaffClickPosition {
+  pitch?: MusicNote;
+  beat?: number;
+  x?: number;
+  y?: number;
+}
 
 interface EditorPageProps {
   projectId?: string;
@@ -83,11 +89,22 @@ export const EditorPage = ({ projectId }: EditorPageProps) => {
     }
   }, [projectId, project]);
   
-  // Local editor state (not related to project data)
-  const [selectedNote, setSelectedNote] = useState<MusicNote | null>('C4' as MusicNote);
-  const [selectedDuration, setSelectedDuration] = useState<NoteDuration>('quarter');
+  // Musical tool state - palette-based selection like Photoshop
+  const [selectedTool, setSelectedTool] = useState<MusicalTool | null>(null);
   const [velocity, setVelocity] = useState<number>(80);
-  const [playbackRate, setPlaybackRate] = useState<number>(1);
+  
+  // Initialize with quarter note tool
+  useState(() => {
+    const quarterNoteTool = {
+      id: 'quarter-note',
+      type: MusicalElementType.NOTE,
+      name: 'Quarter Note',
+      icon: '♩',
+      duration: 'quarter' as NoteDuration,
+      description: 'Click staff to add quarter notes'
+    };
+    setSelectedTool(quarterNoteTool);
+  });
   
   // Use project notes directly
   const notes = project.currentProject?.notes.map(note => ({
@@ -112,26 +129,54 @@ export const EditorPage = ({ projectId }: EditorPageProps) => {
     return <div>No project loaded...</div>;
   }
 
-  // Note editing handlers
-  const handleStaffClick = (position: any) => {
-    console.log('Staff clicked:', position, 'Selected note:', selectedNote, 'Is design mode:', isDesignMode);
-    if (position.pitch && position.beat !== undefined && selectedNote) {
-      const newNote = {
-        pitch: position.pitch as MusicNote,
-        duration: selectedDuration,
-        position: position.beat,
-        velocity: velocity / 127
-      };
-      console.log('Adding note:', newNote);
-      project.addNote(newNote);
-      // Preview the note
-      try {
-        playback.playNote(newNote.pitch, newNote.duration, newNote.velocity);
-      } catch (error) {
-        console.error('Error playing note preview:', error);
+  // Musical element editing handlers - now supports both notes and rests
+  const handleStaffClick = (position: StaffClickPosition) => {
+    if (!selectedTool || !isDesignMode) return;
+    
+    console.log('Staff clicked:', position, 'Selected tool:', selectedTool);
+    
+    if (selectedTool.type === MusicalElementType.NOTE) {
+      // Handle note placement
+      if (position.pitch && position.beat !== undefined) {
+        const newNote = {
+          pitch: position.pitch as MusicNote,
+          duration: selectedTool.duration,
+          position: position.beat,
+          velocity: velocity / 127
+        };
+        console.log('Adding note:', newNote);
+        project.addNote(newNote);
+        
+        // Preview the note
+        try {
+          playback.playNote(newNote.pitch, newNote.duration, newNote.velocity);
+        } catch (error) {
+          console.error('Error playing note preview:', error);
+        }
       }
-    } else {
-      console.warn('Cannot add note - missing data:', { position, selectedNote, isDesignMode });
+    } else if (selectedTool.type === MusicalElementType.REST) {
+      // Handle rest placement
+      if (position.beat !== undefined) {
+        const newRest = createRest({
+          duration: selectedTool.duration
+        });
+        console.log('Adding rest:', newRest);
+        
+        // Add rest to project (assuming project supports rests)
+        if (project.addRest) {
+          project.addRest(newRest);
+        } else {
+          // Fallback: add as a note with no pitch (silent)
+          const silentNote = {
+            pitch: null,
+            duration: selectedTool.duration,
+            position: position.beat,
+            velocity: 0,
+            isRest: true
+          };
+          project.addNote(silentNote as any);
+        }
+      }
     }
   };
   
@@ -250,29 +295,24 @@ export const EditorPage = ({ projectId }: EditorPageProps) => {
         />
       </div>
       
+      {/* Musical Palette - Photoshop-style tool selection */}
       <div className={styles.section}>
-        <NoteSelector
-          selectedNote={selectedNote}
-          onSelectNote={(note: MusicNote | null) => {
-            console.log('Note selected:', note);
-            setSelectedNote(note);
-            // Play preview note when selected
-            if (note) {
+        <MusicalPalette
+          selectedTool={selectedTool}
+          onSelectTool={(tool) => {
+            console.log('Musical tool selected:', tool);
+            setSelectedTool(tool);
+            
+            // Play preview for note tools
+            if (tool.type === MusicalElementType.NOTE) {
               try {
-                playback.playNote(note, selectedDuration, velocity / 127);
+                // Use middle C for preview since we don't have pitch selection yet
+                playback.playNote('C4' as MusicNote, tool.duration, velocity / 127);
               } catch (error) {
-                console.error('Error playing preview note:', error);
+                console.error('Error playing tool preview:', error);
               }
             }
           }}
-          disabled={!isDesignMode}
-        />
-      </div>
-
-      <div className={styles.section}>
-        <DurationSelector
-          selectedDuration={selectedDuration}
-          onSelectDuration={setSelectedDuration}
           disabled={!isDesignMode}
         />
       </div>
@@ -295,53 +335,6 @@ export const EditorPage = ({ projectId }: EditorPageProps) => {
           disabled={!isDesignMode}
         />
       </div>
-    </div>
-  );
-
-  const rightSidebar = (
-    <div className={styles.sidebar}>
-      <h3>Color Mapping</h3>
-      
-      <ColorPreview
-        colors={[
-          { id: '1', name: 'Bass Notes', hex: '#ff6b6b' },
-          { id: '2', name: 'Melody', hex: '#4ecdc4' },
-          { id: '3', name: 'Harmony', hex: '#45b7d1' },
-        ]}
-        selectedColorId={'1'}
-        onSelectColor={() => {}}
-        onAddColor={() => {}}
-        onRemoveColor={() => {}}
-      />
-
-      {isPlaybackMode && (
-        <div className={styles.section}>
-          <h4>Playback Controls</h4>
-          <PlaybackBar
-            isPlaying={playback.isPlaying}
-            currentTime={playback.currentTime}
-            duration={playback.duration}
-            playbackRate={playbackRate}
-            onPlay={() => {
-              console.log('Play clicked, notes:', notes);
-              playback.play();
-            }}
-            onPause={() => {
-              console.log('Pause clicked');
-              playback.pause();
-            }}
-            onStop={() => {
-              console.log('Stop clicked');
-              playback.stop();
-            }}
-            onSeek={(position: number) => {
-              console.log('Seek to:', position);
-              playback.seek(position);
-            }}
-            onRateChange={setPlaybackRate}
-          />
-        </div>
-      )}
     </div>
   );
 
@@ -398,7 +391,7 @@ export const EditorPage = ({ projectId }: EditorPageProps) => {
               project={project.currentProject}
               mode={mode}
               playheadPosition={0}
-              onStaffClick={isDesignMode ? (staffId: string, position: any) => {
+              onStaffClick={isDesignMode ? (staffId: string, position: StaffClickPosition) => {
                 console.log('MultiStaffCanvas click:', staffId, position, 'Design mode:', isDesignMode);
                 setSelectedStaffIndex(0); // Mock implementation
                 handleStaffClick(position);

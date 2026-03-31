@@ -13,11 +13,9 @@ export interface ScrollState {
   visualPlayheadPosition: number;
 }
 
-export class PlayheadScrollManager {
-  /**
-   * Calculate horizontal scroll state and position
-   */
-  static getScrollStateHorizontal(
+export const createPlayheadScrollManager = function() {
+  // Private implementation functions
+  const getScrollStateHorizontal = function(
     playheadXPosition: number,
     contentWidth: number,
     viewportWidth: number,
@@ -51,12 +49,12 @@ export class PlayheadScrollManager {
       scrollPosition: playheadXPosition - centerThreshold,
       visualPlayheadPosition: centerThreshold,
     };
-  }
+  };
 
   /**
    * Calculate vertical scroll state and position for staves
    */
-  static getScrollStateVertical(
+  const getScrollStateVertical = function(
     playheadYPosition: number,
     contentHeight: number,
     viewportHeight: number,
@@ -90,12 +88,12 @@ export class PlayheadScrollManager {
       scrollPosition: playheadYPosition - centerThreshold,
       visualPlayheadPosition: centerThreshold,
     };
-  }
+  };
 
   /**
    * Calculate both scroll states and visual positions
    */
-  static getScrollStatesBoth(
+  const getScrollStatesBoth = function(
     playheadXPosition: number,
     playheadYPosition: number,
     contentWidth: number,
@@ -105,14 +103,14 @@ export class PlayheadScrollManager {
     centerOffsetX: number = 0.5,
     centerOffsetY: number = 0.5
   ) {
-    const horizontal = this.getScrollStateHorizontal(
+    const horizontal = getScrollStateHorizontal(
       playheadXPosition,
       contentWidth,
       viewportWidth,
       centerOffsetX
     );
 
-    const vertical = this.getScrollStateVertical(
+    const vertical = getScrollStateVertical(
       playheadYPosition,
       contentHeight,
       viewportHeight,
@@ -129,13 +127,21 @@ export class PlayheadScrollManager {
       visualPlayheadX: horizontal.visualPlayheadPosition,
       visualPlayheadY: vertical.visualPlayheadPosition,
     };
-  }
+  };
 
   /**
    * Clamp scroll position to valid range
    */
-  static clampScrollPosition(position: number, contentSize: number, viewportSize: number): number {
+  const clampScrollPosition = function(position: number, contentSize: number, viewportSize: number): number {
     const maxScroll = Math.max(0, contentSize - viewportSize);
     return Math.max(0, Math.min(position, maxScroll));
-  }
-}
+  };
+
+  // Public API with frozen interface
+  return Object.freeze({
+    getScrollStateHorizontal,
+    getScrollStateVertical,
+    getScrollStatesBoth,
+    clampScrollPosition,
+  });
+};

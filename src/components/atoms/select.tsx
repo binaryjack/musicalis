@@ -23,7 +23,7 @@ export const Select = function(props: SelectProps) {
       onChange={(e) => props.onChange?.(e.target.value)}
       className={["select", props.className || ""].join(" ").trim()}
     >
-      {props.options.map((option: any) => (
+      {props.options.map((option: SelectOption) => (
         <option key={option.value} value={option.value}>
           {option.label}
         </option>

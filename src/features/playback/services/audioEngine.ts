@@ -1,12 +1,6 @@
-import { useCallback, useRef, useEffect } from 'react';
 import * as Tone from 'tone';
-import { useDispatch } from 'react-redux';
 import { MusicNote } from '../../../types/enums';
 import type { Project } from '../../../types/models';
-
-// Simple action creators to avoid slice.actions issues
-const setAudioEngineReady = (ready: boolean) => ({ type: 'playback/setAudioEngineReady', payload: ready });
-const setError = (error: string) => ({ type: 'playback/setError', payload: error });
 
 interface AudioEngineConfig {
   sampleRate?: number;
@@ -14,14 +8,15 @@ interface AudioEngineConfig {
   masterVolume?: number;
 }
 
-export class AudioEngine {
-  private synth: Tone.PolySynth | null = null;
-  private reverb: Tone.Reverb | null = null;
-  private masterVolume: Tone.Volume | null = null;
-  private initialized = false;
+export const createAudioEngine = function(config: AudioEngineConfig = {}) {
+  // Private state
+  let synth: Tone.PolySynth | null = null;
+  let reverb: Tone.Reverb | null = null;
+  let masterVolume: Tone.Volume | null = null;
+  let initialized = false;
 
-  async initialize(config: AudioEngineConfig = {}) {
-    if (this.initialized) return;
+  const initialize = async function() {
+    if (initialized) return;
 
     try {
       await Tone.start();
@@ -33,8 +28,8 @@ export class AudioEngine {
       }
 
       // Create synth
-      this.synth = new Tone.PolySynth(Tone.Synth).toDestination();
-      this.synth.set({
+      synth = new Tone.PolySynth(Tone.Synth).toDestination();
+      synth.set({
         oscillator: {
           type: 'sine'
         },
@@ -47,84 +42,84 @@ export class AudioEngine {
       });
 
       // Create effects
-      this.reverb = new Tone.Reverb({
+      reverb = new Tone.Reverb({
         decay: 2.5,
         wet: 0.2
       });
 
-      this.masterVolume = new Tone.Volume(config.masterVolume || -10);
+      masterVolume = new Tone.Volume(config.masterVolume || -10);
 
       // Connect audio chain
-      if (this.synth && this.reverb && this.masterVolume) {
-        this.synth.connect(this.reverb);
-        this.reverb.connect(this.masterVolume);
-        this.masterVolume.toDestination();
+      if (synth && reverb && masterVolume) {
+        synth.connect(reverb);
+        reverb.connect(masterVolume);
+        masterVolume.toDestination();
       }
 
-      this.initialized = true;
+      initialized = true;
     } catch (error) {
       console.error('Failed to initialize audio engine:', error);
       throw error;
     }
-  }
+  };
 
-  async dispose() {
-    if (this.synth) {
-      this.synth.dispose();
-      this.synth = null;
+  const dispose = async function() {
+    if (synth) {
+      synth.dispose();
+      synth = null;
     }
-    if (this.reverb) {
-      this.reverb.dispose(); 
-      this.reverb = null;
+    if (reverb) {
+      reverb.dispose(); 
+      reverb = null;
     }
-    if (this.masterVolume) {
-      this.masterVolume.dispose();
-      this.masterVolume = null;
+    if (masterVolume) {
+      masterVolume.dispose();
+      masterVolume = null;
     }
-    this.initialized = false;
-  }
+    initialized = false;
+  };
 
-  playNote(note: MusicNote, duration: string = '8n', velocity: number = 0.7) {
-    if (!this.synth || !this.initialized) {
+  const playNote = function(note: MusicNote, duration: string = '8n', velocity: number = 0.7) {
+    if (!synth || !initialized) {
       console.warn('Audio engine not initialized');
       return;
     }
 
     try {
-      const frequency = this.noteToFrequency(note);
-      this.synth.triggerAttackRelease(frequency, duration, undefined, velocity);
+      const frequency = noteToFrequency(note);
+      synth.triggerAttackRelease(frequency, duration, undefined, velocity);
     } catch (error) {
       console.error('Failed to play note:', error);
     }
-  }
+  };
 
-  playChord(notes: MusicNote[], duration: string = '8n', velocity: number = 0.7) {
-    if (!this.synth || !this.initialized) {
+  const playChord = function(notes: MusicNote[], duration: string = '8n', velocity: number = 0.7) {
+    if (!synth || !initialized) {
       console.warn('Audio engine not initialized');
       return;
     }
 
     try {
-      const frequencies = notes.map(note => this.noteToFrequency(note));
-      this.synth.triggerAttackRelease(frequencies, duration, undefined, velocity);
+      const frequencies = notes.map(note => noteToFrequency(note));
+      synth.triggerAttackRelease(frequencies, duration, undefined, velocity);
     } catch (error) {
       console.error('Failed to play chord:', error);
     }
-  }
+  };
 
-  setMasterVolume(volume: number) {
-    if (this.masterVolume) {
-      this.masterVolume.volume.value = Tone.gainToDb(volume);
+  const setMasterVolume = function(volume: number) {
+    if (masterVolume) {
+      masterVolume.volume.value = Tone.gainToDb(volume);
     }
-  }
+  };
 
-  setReverbAmount(amount: number) {
-    if (this.reverb) {
-      this.reverb.wet.value = Math.max(0, Math.min(1, amount));
+  const setReverbAmount = function(amount: number) {
+    if (reverb) {
+      reverb.wet.value = Math.max(0, Math.min(1, amount));
     }
-  }
+  };
 
-  private noteToFrequency(note: MusicNote): string {
+  const noteToFrequency = function(note: MusicNote): string {
     // Convert MusicNote enum to Tone.js note format
     const noteMap: Record<string, string> = {
       [MusicNote.C]: 'C4',
@@ -137,98 +132,92 @@ export class AudioEngine {
     };
 
     return noteMap[note] || 'C4';
-  }
-}
+  };
 
-// Hook for using the audio engine
-export const useAudioEngine = () => {
-  const dispatch = useDispatch();
-  const audioEngineRef = useRef<AudioEngine | null>(null);
-  // Remove unused selectors for now
+  // Public API with frozen interface
+  return Object.freeze({
+    initialize,
+    dispose,
+    playNote,
+    playChord,
+    setMasterVolume,
+    setReverbAmount,
+  });
+};
 
-  // Initialize audio engine
-  const initializeAudio = useCallback(async () => {
+// Service for managing audio engine with state dispatch
+export const createAudioEngineService = function(dispatch: (action: { type: string; payload?: unknown }) => void) {
+  let audioEngine: ReturnType<typeof createAudioEngine> | null = null;
+
+  const initializeAudio = async function() {
     try {
-      if (!audioEngineRef.current) {
-        audioEngineRef.current = new AudioEngine();
+      if (!audioEngine) {
+        audioEngine = createAudioEngine({
+          sampleRate: 44100,
+          bufferSize: 256,
+          masterVolume: 0.8,
+        });
       }
 
-      await audioEngineRef.current.initialize({
-        sampleRate: 44100, // Default fallback
-        bufferSize: 256,   // Default fallback
-        masterVolume: 0.8, // Default fallback
-      });
-
-      dispatch(setAudioEngineReady(true));
+      await audioEngine.initialize();
+      dispatch({ type: 'playback/setAudioEngineReady', payload: true });
     } catch (error) {
-      dispatch(setError(error instanceof Error ? error.message : 'Failed to initialize audio'));
+      dispatch({ 
+        type: 'playback/setError', 
+        payload: error instanceof Error ? error.message : 'Failed to initialize audio' 
+      });
     }
-  }, [dispatch]);
+  };
 
-  // Clean up audio engine
-  const disposeAudio = useCallback(async () => {
-    if (audioEngineRef.current) {
-      await audioEngineRef.current.dispose();
-      audioEngineRef.current = null;
+  const disposeAudio = async function() {
+    if (audioEngine) {
+      await audioEngine.dispose();
+      audioEngine = null;
     }
-    dispatch(setAudioEngineReady(false));
-  }, [dispatch]);
+    dispatch({ type: 'playback/setAudioEngineReady', payload: false });
+  };
 
-  // Play a single note
-  const playNote = useCallback((note: MusicNote, duration?: string, velocity?: number) => {
-    if (audioEngineRef.current) {
-      audioEngineRef.current.playNote(note, duration, velocity);
+  const playNote = function(note: MusicNote, duration?: string, velocity?: number) {
+    if (audioEngine) {
+      audioEngine.playNote(note, duration, velocity);
     }
-  }, []);
+  };
 
-  // Play multiple notes as a chord
-  const playChord = useCallback((notes: MusicNote[], duration?: string, velocity?: number) => {
-    if (audioEngineRef.current) {
-      audioEngineRef.current.playChord(notes, duration, velocity);
+  const playChord = function(notes: MusicNote[], duration?: string, velocity?: number) {
+    if (audioEngine) {
+      audioEngine.playChord(notes, duration, velocity);
     }
-  }, []);
+  };
 
-  // Update master volume
-  const setMasterVolume = useCallback((volume: number) => {
-    if (audioEngineRef.current) {
-      audioEngineRef.current.setMasterVolume(volume);
+  const setMasterVolume = function(volume: number) {
+    if (audioEngine) {
+      audioEngine.setMasterVolume(volume);
     }
-  }, []);
+  };
 
-  // Set reverb amount
-  const setReverbAmount = useCallback((amount: number) => {
-    if (audioEngineRef.current) {
-      audioEngineRef.current.setReverbAmount(amount);
+  const setReverbAmount = function(amount: number) {
+    if (audioEngine) {
+      audioEngine.setReverbAmount(amount);
     }
-  }, []);
+  };
 
-  // Play project as sequence
-  const playProject = useCallback(async (project: Project) => {
-    if (!audioEngineRef.current) {
+  const playProject = async function(project: Project) {
+    if (!audioEngine) {
       console.warn('Audio engine not ready');
       return;
     }
 
     dispatch({ type: 'playback/play' });
     console.log('Playing project:', project.name);
-  }, [dispatch]);
+  };
 
-  // Stop playback
-  const stopPlayback = useCallback(() => {
+  const stopPlayback = function() {
     dispatch({ type: 'playback/stop' });
     Tone.Transport.stop();
     Tone.Transport.cancel();
-  }, [dispatch]);
+  };
 
-  // Cleanup on unmount
-  useEffect(() => {
-    return () => {
-      disposeAudio();
-    };
-  }, [disposeAudio]);
-
-  return {
-    isReady: true, // Placeholder - will be properly managed by Redux
+  return Object.freeze({
     initializeAudio,
     disposeAudio,
     playNote,
@@ -237,5 +226,6 @@ export const useAudioEngine = () => {
     stopPlayback,
     setMasterVolume,
     setReverbAmount,
-  };
+    isReady: true, // Placeholder - managed by Redux
+  });
 };

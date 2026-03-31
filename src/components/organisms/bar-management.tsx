@@ -40,7 +40,11 @@ export const BarManagement = function(props: BarManagementProps) {
   const [showKeySignatureDialog, setShowKeySignatureDialog] = useState(false);
   const [showBarActions, setShowBarActions] = useState(false);
   const [draggedBarIndex, setDraggedBarIndex] = useState<number | null>(null);
-  const [customTimeSignature, setCustomTimeSignature] = useState<TimeSignature>({ numerator: 4, denominator: 4 });
+  const [customTimeSignature, setCustomTimeSignature] = useState<TimeSignature>({ 
+    beatsPerMeasure: 4, 
+    beatValue: 4, 
+    display: '4/4' 
+  });
   
   const bars = useMemo(() => props.composition?.bars || [], [props.composition?.bars]);
   
