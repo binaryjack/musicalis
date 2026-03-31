@@ -33,6 +33,7 @@
     "redux": "^5.0.1",
     "redux-saga": "^1.4.2",
     "reselect": "^5.1.1",
+    "soundfont-player": "^0.12.0",
     "tone": "^15.1.22"
   },
   "devDependencies": {

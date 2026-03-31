@@ -56,7 +56,10 @@ export const Dropdown = ({ options, value, onChange, placeholder, disabled }: Dr
           borderRadius: '4px',
           zIndex: 1000,
           minWidth: '100%',
-          marginTop: '2px'
+          marginTop: '2px',
+          maxHeight: '400px',
+          overflowY: 'auto',
+          boxShadow: '0 4px 6px rgba(0,0,0,0.3)'
         }}>
           {options.map((option) => (
             <button

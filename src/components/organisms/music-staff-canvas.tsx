@@ -1,15 +1,16 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { Staff, NoteDuration } from '../../types/musicTypes';
-import { 
-  getClefGlyph, 
-  getNoteHeadGlyph, 
-  getFlagGlyph,
-  getTimeSignatureGlyphs,
-  getAccidentalGlyph 
+import {
+    getAccidentalGlyph,
+    getClefGlyph,
+    getFlagGlyph,
+    getNoteHeadGlyph,
+    getTimeSignatureGlyphs
 } from '../../shared/utils/smufl-glyphs';
+import type { Note, NoteDuration, Staff } from '../../types/musicTypes';
 
 export interface MusicStaffCanvasProps {
   staff: Staff;
+  mode?: 'design' | 'playback' | string;
   width?: number;
   height?: number;
   playheadPosition?: number;
@@ -21,6 +22,8 @@ export interface MusicStaffCanvasProps {
   onNoteClick?: (noteId: string, staffId: string) => void;
   onPlayheadChange?: (position: number) => void;
   onAddNote?: (staffId: string, barIndex: number, beatIndex: number, pitch: string, octave: number, duration: NoteDuration) => void;
+  onRemoveNote?: (staffId: string, barIndex: number, beatIndex: number, noteId: string) => void;
+  onMoveNote?: (staffId: string, sourceBarIndex: number, sourceBeatIndex: number, noteId: string, targetBarIndex: number, targetBeatIndex: number, pitch: string, octave: number) => void;
 }
 
 const RenderConfig = {
@@ -40,22 +43,32 @@ const RenderConfig = {
 export const MusicStaffCanvas = function(props: MusicStaffCanvasProps) {
   const {
     staff,
+    mode = 'design',
     width = 1000,
     height = 200,
     playheadPosition = 0,
     darkMode = false,
     selectedDuration = 'quarter',
-    selectedRest,
     onAddBar,
     onRemoveBar,
     onPlayheadChange,
     onAddNote,
+    onRemoveNote,
+    onMoveNote,
   } = props;
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const isDraggingNoteRef = useRef(false);
   const [fontLoaded, setFontLoaded] = useState(false);
   const [hoveredButton, setHoveredButton] = useState<'add' | 'remove' | null>(null);
   const [isDraggingPlayhead, setIsDraggingPlayhead] = useState(false);
+  const [draggedNote, setDraggedNote] = useState<{
+    barIndex: number;
+    beatIndex: number;
+    note: Note;
+    currentX: number;
+    currentY: number;
+  } | null>(null);
 
   /**
    * Get duration value in quarter note units
@@ -74,49 +87,19 @@ export const MusicStaffCanvas = function(props: MusicStaffCanvasProps) {
   /**
    * Calculate remaining duration available in a beat
    */
-  const getRemainingDuration = (barIndex: number, beatIndex: number): number => {
-    const bar = staff.bars[barIndex];
-    if (!bar) return 1;
-    
-    const beat = bar.beats[beatIndex];
-    if (!beat) return 1;
-    
-    // Calculate total duration used in this beat (in quarter notes)
-    const usedDuration = beat.notes.reduce((sum, note) => {
-      return sum + getDurationValue(note.duration);
-    }, 0);
-    
-    // Each beat is worth 1 quarter note
-    return 1 - usedDuration;
-  };
+  const getRemainingDuration = useCallback((): number => {
+    return 1;
+  }, []);
 
   /**
    * Check if a note can fit in the specified beat
    */
-  const canFitNote = (barIndex: number, beatIndex: number, duration: NoteDuration): boolean => {
-    const remainingDuration = getRemainingDuration(barIndex, beatIndex);
-    const noteDuration = getDurationValue(duration);
-    return noteDuration <= remainingDuration;
-  };
+    const canFitNote = useCallback((_barIndex: number, _beatIndex: number, duration: NoteDuration): boolean => {
+      const remainingDuration = getRemainingDuration();
+      const noteDuration = getDurationValue(duration);
+      return noteDuration <= remainingDuration;
+    }, [getRemainingDuration]);
 
-  /**
-   * Get subdivision snap position based on duration
-   */
-  const getSubdivisionSnap = (xInBeat: number, beatWidth: number, duration: NoteDuration): number => {
-    const durationValue = getDurationValue(duration);
-    
-    // Calculate number of subdivisions based on smallest note currently possible
-    const subdivisions = Math.max(1, Math.floor(1 / durationValue));
-    const subdivisionWidth = beatWidth / subdivisions;
-    
-    // Snap to nearest subdivision
-    const subdivisionIndex = Math.round(xInBeat / subdivisionWidth);
-    return subdivisionIndex * subdivisionWidth;
-  };
-
-  /**
-   * Get Y position for a note on the staff
-   */
   const getNoteY = useCallback((pitch: string, octave: number): number => {
     const staffTop = 40;
     const lineSpacing = RenderConfig.staffLineSpacing;
@@ -124,19 +107,28 @@ export const MusicStaffCanvas = function(props: MusicStaffCanvasProps) {
     // Treble clef: lines are E5, G5, B5, D6, F6
     // Spaces are F5, A5, C6, E6
     const trebleNotes: Record<string, number> = {
-      'F6': staffTop,                           // Above staff
-      'E6': staffTop + lineSpacing * 0.5,       // Top space
-      'D6': staffTop + lineSpacing * 1,         // Top line
-      'C6': staffTop + lineSpacing * 1.5,       // 2nd space
-      'B5': staffTop + lineSpacing * 2,         // 2nd line
-      'A5': staffTop + lineSpacing * 2.5,       // 3rd space
-      'G5': staffTop + lineSpacing * 3,         // Middle line
-      'F5': staffTop + lineSpacing * 3.5,       // 4th space
-      'E5': staffTop + lineSpacing * 4,         // Bottom line
-      'D5': staffTop + lineSpacing * 4.5,       // Below staff
+      'D7': staffTop - lineSpacing * 2.5,
+      'C7': staffTop - lineSpacing * 2,
+      'B6': staffTop - lineSpacing * 1.5,
+      'A6': staffTop - lineSpacing * 1,
+      'G6': staffTop - lineSpacing * 0.5,
+      'F6': staffTop,
+      'E6': staffTop + lineSpacing * 0.5,
+      'D6': staffTop + lineSpacing * 1,
+      'C6': staffTop + lineSpacing * 1.5,
+      'B5': staffTop + lineSpacing * 2,
+      'A5': staffTop + lineSpacing * 2.5,
+      'G5': staffTop + lineSpacing * 3,
+      'F5': staffTop + lineSpacing * 3.5,
+      'E5': staffTop + lineSpacing * 4,
+      'D5': staffTop + lineSpacing * 4.5,
       'C5': staffTop + lineSpacing * 5,
       'B4': staffTop + lineSpacing * 5.5,
       'A4': staffTop + lineSpacing * 6,
+      'G4': staffTop + lineSpacing * 6.5,
+      'F4': staffTop + lineSpacing * 7,
+      'E4': staffTop + lineSpacing * 7.5,
+      'D4': staffTop + lineSpacing * 8,
     };
     
     const noteKey = `${pitch}${octave}`;
@@ -160,6 +152,86 @@ export const MusicStaffCanvas = function(props: MusicStaffCanvasProps) {
     };
     
     loadFont();
+  }, []);
+
+  /**
+   * Draw ledger lines for notes outside the 5-line staff
+   */
+  const drawLedgerLines = useCallback((ctx: CanvasRenderingContext2D, centerX: number, noteY: number, color: string) => {
+    const staffTop = 40;
+    const lineSpacing = RenderConfig.staffLineSpacing;
+    const staffBottom = staffTop + lineSpacing * 4;
+    const ledgerLineLength = 24;
+
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 1;
+
+    // Above staff
+    if (noteY < staffTop - 1) {
+      for (let y = staffTop - lineSpacing; y + 1 >= noteY; y -= lineSpacing) {
+        ctx.beginPath();
+        ctx.moveTo(centerX - ledgerLineLength / 2, y);
+        ctx.lineTo(centerX + ledgerLineLength / 2, y);
+        ctx.stroke();
+      }
+    }
+    // Below staff
+    else if (noteY > staffBottom + 1) {
+      for (let y = staffBottom + lineSpacing; y - 1 <= noteY; y += lineSpacing) {
+        ctx.beginPath();
+        ctx.moveTo(centerX - ledgerLineLength / 2, y);
+        ctx.lineTo(centerX + ledgerLineLength / 2, y);
+        ctx.stroke();
+      }
+    }
+  }, []);
+
+  /**
+   * Convert Y position to pitch and octave
+   */
+  const getYToPitch = useCallback((y: number): { pitch: string; octave: number } => {
+    const staffTop = 40;
+    const lineSpacing = RenderConfig.staffLineSpacing;
+    
+    // Map Y positions to notes (treble clef)
+    const notes = [
+      { y: staffTop - lineSpacing * 2.5, pitch: 'D', octave: 7 },
+      { y: staffTop - lineSpacing * 2, pitch: 'C', octave: 7 },
+      { y: staffTop - lineSpacing * 1.5, pitch: 'B', octave: 6 },
+      { y: staffTop - lineSpacing * 1, pitch: 'A', octave: 6 },
+      { y: staffTop - lineSpacing * 0.5, pitch: 'G', octave: 6 },
+      { y: staffTop, pitch: 'F', octave: 6 },
+      { y: staffTop + lineSpacing * 0.5, pitch: 'E', octave: 6 },
+      { y: staffTop + lineSpacing * 1, pitch: 'D', octave: 6 },
+      { y: staffTop + lineSpacing * 1.5, pitch: 'C', octave: 6 },
+      { y: staffTop + lineSpacing * 2, pitch: 'B', octave: 5 },
+      { y: staffTop + lineSpacing * 2.5, pitch: 'A', octave: 5 },
+      { y: staffTop + lineSpacing * 3, pitch: 'G', octave: 5 },
+      { y: staffTop + lineSpacing * 3.5, pitch: 'F', octave: 5 },
+      { y: staffTop + lineSpacing * 4, pitch: 'E', octave: 5 },
+      { y: staffTop + lineSpacing * 4.5, pitch: 'D', octave: 5 },
+      { y: staffTop + lineSpacing * 5, pitch: 'C', octave: 5 },
+      { y: staffTop + lineSpacing * 5.5, pitch: 'B', octave: 4 },
+      { y: staffTop + lineSpacing * 6, pitch: 'A', octave: 4 },
+      { y: staffTop + lineSpacing * 6.5, pitch: 'G', octave: 4 },
+      { y: staffTop + lineSpacing * 7, pitch: 'F', octave: 4 },
+      { y: staffTop + lineSpacing * 7.5, pitch: 'E', octave: 4 },
+      { y: staffTop + lineSpacing * 8, pitch: 'D', octave: 4 },
+    ];
+    
+    // Find closest note
+    let closest = notes[0];
+    let minDist = Math.abs(y - notes[0].y);
+    
+    for (const note of notes) {
+      const dist = Math.abs(y - note.y);
+      if (dist < minDist) {
+        minDist = dist;
+        closest = note;
+      }
+    }
+    
+    return { pitch: closest.pitch, octave: closest.octave };
   }, []);
 
   /**
@@ -250,10 +322,17 @@ export const MusicStaffCanvas = function(props: MusicStaffCanvasProps) {
         
         // Draw each note in this beat
         beat.notes.forEach(note => {
+          if (draggedNote && draggedNote.note.id === note.id) {
+            return; // don't draw original, it will be drawn at current position
+          }
+
           const noteY = getNoteY(note.pitch, note.octave);
           const adjustedX = beatX + (note.visualOffsetX || 0);
           const adjustedY = noteY + (note.visualOffsetY || 0);
           
+          // Draw ledger lines
+          drawLedgerLines(ctx, adjustedX - 2, noteY, lineColor);
+
           // Draw note head
           ctx.font = `${RenderConfig.noteFontSize}px Bravura`;
           ctx.fillStyle = textColor;
@@ -350,7 +429,7 @@ export const MusicStaffCanvas = function(props: MusicStaffCanvasProps) {
     }
     
     // Draw playhead cursor
-    if (playheadPosition >= 0) {
+    if (mode !== 'design' && playheadPosition >= 0) {
       // Calculate playhead X position based on beat position
       const beatsPerBar = bars[0]?.beats.length || 4;
       const barIndex = Math.floor(playheadPosition / beatsPerBar);
@@ -377,7 +456,46 @@ export const MusicStaffCanvas = function(props: MusicStaffCanvasProps) {
       ctx.restore();
     }
     
-  }, [staff, width, height, darkMode, getNoteY, hoveredButton, playheadPosition]);
+    // Draw dragged note on top
+    if (draggedNote) {
+      const note = draggedNote.note;
+      const x = draggedNote.currentX;
+      // Get closest pitch Y so it snaps visually to the staff vertically when dragging
+      // But if it's way out, maybe just draw it at currentY? We'll snap it for better UX.
+      const snappedNoteY = getYToPitch ? getNoteY(getYToPitch(draggedNote.currentY).pitch, getYToPitch(draggedNote.currentY).octave) : draggedNote.currentY;
+
+      ctx.save();
+      ctx.globalAlpha = 0.7; // make it slightly transparent
+      drawLedgerLines(ctx, x - 2, snappedNoteY, lineColor);
+
+      ctx.font = `${RenderConfig.noteFontSize}px Bravura`;
+      ctx.fillStyle = textColor;
+      const noteHeadGlyph = getNoteHeadGlyph(note.duration);
+      ctx.fillText(noteHeadGlyph, x - 8, snappedNoteY);
+      
+      if (note.duration === 'quarter' || note.duration === 'eighth' || note.duration === 'sixteenth') {
+        ctx.strokeStyle = textColor;
+        ctx.lineWidth = RenderConfig.stemThickness;
+        ctx.beginPath();
+        ctx.moveTo(x + 4, snappedNoteY);
+        ctx.lineTo(x + 4, snappedNoteY - RenderConfig.stemHeight);
+        ctx.stroke();
+        
+        const flagGlyph = getFlagGlyph(note.duration, true);
+        if (flagGlyph) {
+          ctx.font = `${RenderConfig.noteFontSize}px Bravura`;
+          ctx.fillText(flagGlyph, x + 4, snappedNoteY - RenderConfig.stemHeight);
+        }
+      }
+      
+      if (note.accidental) {
+        const accidentalGlyph = getAccidentalGlyph(note.accidental);
+        ctx.font = `${RenderConfig.noteFontSize}px Bravura`;
+        ctx.fillText(accidentalGlyph, x - 20, snappedNoteY);
+      }
+      ctx.restore();
+    }
+  }, [staff, width, height, darkMode, getNoteY, drawLedgerLines, hoveredButton, playheadPosition, mode, draggedNote, getYToPitch]);
 
   /**
    * Render canvas
@@ -394,10 +512,65 @@ export const MusicStaffCanvas = function(props: MusicStaffCanvasProps) {
     drawStaff(ctx);
   }, [drawStaff, fontLoaded]);
 
+  const getHitNote = useCallback((x: number, y: number) => {
+    const barStartX = 130;
+    
+    for (let barIndex = 0; barIndex < staff.bars.length; barIndex++) {
+      const bar = staff.bars[barIndex];
+      const barX = barStartX + (barIndex * RenderConfig.barWidth);
+      const beatsCount = bar.beats.length;
+      const beatWidth = RenderConfig.barWidth / beatsCount;
+      
+      for (let beatIndex = 0; beatIndex < bar.beats.length; beatIndex++) {
+        const beat = bar.beats[beatIndex];
+        const beatX = barX + (beatIndex * beatWidth) + (beatWidth / 2);
+        
+        for (const note of beat.notes) {
+          const noteY = getNoteY(note.pitch, note.octave);
+          const adjustedX = beatX + (note.visualOffsetX || 0);
+          const adjustedY = noteY + (note.visualOffsetY || 0);
+          
+          // Hit detection radius (approx size of note head + leeway)
+          const hitRadiusX = 15;
+          const hitRadiusY = 15;
+          
+          if (Math.abs(x - adjustedX) <= hitRadiusX && Math.abs(y - adjustedY) <= hitRadiusY) {
+            return { barIndex, beatIndex, note, adjustedX, adjustedY };
+          }
+        }
+      }
+    }
+    return null;
+  }, [staff, getNoteY]);
+
+  /**
+   * Handle double click
+   */
+  const handleDoubleClick = useCallback((event: React.MouseEvent<HTMLCanvasElement>) => {
+    if (mode !== 'design') return;
+    
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    
+    const rect = canvas.getBoundingClientRect();
+    const x = event.clientX - rect.left;
+    const y = event.clientY - rect.top;
+    
+    const hitNoteInfo = getHitNote(x, y);
+    if (hitNoteInfo && onRemoveNote) {
+      onRemoveNote(staff.id, hitNoteInfo.barIndex, hitNoteInfo.beatIndex, hitNoteInfo.note.id);
+    }
+  }, [mode, staff.id, getHitNote, onRemoveNote]);
+
   /**
    * Handle canvas click
    */
   const handleCanvasClick = useCallback((event: React.MouseEvent<HTMLCanvasElement>) => {
+    if (isDraggingNoteRef.current) {
+      isDraggingNoteRef.current = false;
+      return;
+    }
+
     const canvas = canvasRef.current;
     if (!canvas) return;
     
@@ -440,16 +613,22 @@ export const MusicStaffCanvas = function(props: MusicStaffCanvasProps) {
     }
     
     // Check if clicked on staff area to add note or set playhead position
-    if (x >= barStartX && x < finalBarX && y >= staffTop - 20 && y <= staffTop + barHeight + 20) {
+    if (x >= barStartX && x < finalBarX && y >= staffTop - 40 && y <= staffTop + barHeight + 40) {
       const beatsPerBar = staff.bars[0]?.beats.length || 4;
       const relativeX = x - barStartX;
       const barIndex = Math.floor(relativeX / RenderConfig.barWidth);
       const xInBar = relativeX % RenderConfig.barWidth;
       const beatWidth = RenderConfig.barWidth / beatsPerBar;
       const beatIndex = Math.floor(xInBar / beatWidth);
-      
+
       // If clicked near staff lines (within staff area), add a note
-      if (y >= staffTop && y <= staffTop + barHeight && onAddNote) {
+      if (mode === 'design' && y >= staffTop - 40 && y <= staffTop + barHeight + 40 && onAddNote) {
+        
+        // Prevent adding note if we clicked on an existing note
+        if (getHitNote(x, y)) {
+          return;
+        }
+
         // Check if we're within valid bar/beat range
         if (barIndex >= 0 && barIndex < staff.bars.length && beatIndex >= 0 && beatIndex < beatsPerBar) {
           // Check if note can fit in this beat
@@ -471,49 +650,12 @@ export const MusicStaffCanvas = function(props: MusicStaffCanvasProps) {
       }
       
       // Otherwise, set playhead position
-      const totalBeats = (relativeX / RenderConfig.barWidth) * beatsPerBar;
-      onPlayheadChange?.(Math.max(0, totalBeats));
-    }
-  }, [staff, onAddBar, onRemoveBar, onPlayheadChange, onAddNote, selectedDuration, canFitNote, getSubdivisionSnap]);
-  
-  /**
-   * Convert Y position to pitch and octave
-   */
-  const getYToPitch = (y: number): { pitch: string; octave: number } => {
-    const staffTop = 40;
-    const lineSpacing = RenderConfig.staffLineSpacing;
-    
-    // Map Y positions to notes (treble clef)
-    const notes = [
-      { y: staffTop, pitch: 'F', octave: 6 },
-      { y: staffTop + lineSpacing * 0.5, pitch: 'E', octave: 6 },
-      { y: staffTop + lineSpacing * 1, pitch: 'D', octave: 6 },
-      { y: staffTop + lineSpacing * 1.5, pitch: 'C', octave: 6 },
-      { y: staffTop + lineSpacing * 2, pitch: 'B', octave: 5 },
-      { y: staffTop + lineSpacing * 2.5, pitch: 'A', octave: 5 },
-      { y: staffTop + lineSpacing * 3, pitch: 'G', octave: 5 },
-      { y: staffTop + lineSpacing * 3.5, pitch: 'F', octave: 5 },
-      { y: staffTop + lineSpacing * 4, pitch: 'E', octave: 5 },
-      { y: staffTop + lineSpacing * 4.5, pitch: 'D', octave: 5 },
-      { y: staffTop + lineSpacing * 5, pitch: 'C', octave: 5 },
-      { y: staffTop + lineSpacing * 5.5, pitch: 'B', octave: 4 },
-      { y: staffTop + lineSpacing * 6, pitch: 'A', octave: 4 },
-    ];
-    
-    // Find closest note
-    let closest = notes[0];
-    let minDist = Math.abs(y - notes[0].y);
-    
-    for (const note of notes) {
-      const dist = Math.abs(y - note.y);
-      if (dist < minDist) {
-        minDist = dist;
-        closest = note;
+      if (mode !== 'design') {
+        const totalBeats = (relativeX / RenderConfig.barWidth) * beatsPerBar;
+        onPlayheadChange?.(Math.max(0, totalBeats));
       }
     }
-    
-    return { pitch: closest.pitch, octave: closest.octave };
-  };
+  }, [staff, mode, onAddBar, onRemoveBar, onPlayheadChange, onAddNote, selectedDuration, canFitNote, getYToPitch, getHitNote]);
 
   /**
    * Handle mouse move for hover effects
@@ -561,8 +703,19 @@ export const MusicStaffCanvas = function(props: MusicStaffCanvasProps) {
       setHoveredButton(newHoverState);
     }
     
+    // Handle note dragging
+    if (draggedNote && mode === 'design') {
+      isDraggingNoteRef.current = true;
+      setDraggedNote({
+        ...draggedNote,
+        currentX: x,
+        currentY: y
+      });
+      return;
+    }
+
     // Handle playhead dragging
-    if (isDraggingPlayhead) {
+    if (isDraggingPlayhead && mode !== 'design') {
       const barStartX = 130;
       const finalBarX = barStartX + (staff.bars.length * RenderConfig.barWidth);
       
@@ -573,7 +726,7 @@ export const MusicStaffCanvas = function(props: MusicStaffCanvasProps) {
         onPlayheadChange?.(Math.max(0, totalBeats));
       }
     }
-  }, [staff, hoveredButton, isDraggingPlayhead, onPlayheadChange]);
+  }, [staff, mode, hoveredButton, isDraggingPlayhead, onPlayheadChange, draggedNote]);
 
   const handleMouseDown = useCallback((event: React.MouseEvent<HTMLCanvasElement>) => {
     const canvas = canvasRef.current;
@@ -583,25 +736,100 @@ export const MusicStaffCanvas = function(props: MusicStaffCanvasProps) {
     const x = event.clientX - rect.left;
     const y = event.clientY - rect.top;
     
+    if (mode === 'design') {
+      const hitNoteInfo = getHitNote(x, y);
+      if (hitNoteInfo) {
+        isDraggingNoteRef.current = false;
+        setDraggedNote({
+          barIndex: hitNoteInfo.barIndex,
+          beatIndex: hitNoteInfo.beatIndex,
+          note: hitNoteInfo.note,
+          currentX: x,
+          currentY: y
+        });
+        return;
+      }
+    }
+
     const barStartX = 130;
     const finalBarX = barStartX + (staff.bars.length * RenderConfig.barWidth);
     const staffTop = 40;
     const barHeight = RenderConfig.staffLineSpacing * 4;
-    
-    // Check if mousedown on playhead area (staff region)
-    if (x >= barStartX && x < finalBarX && y >= staffTop - 20 && y <= staffTop + barHeight + 20) {
-      setIsDraggingPlayhead(true);
-    }
-  }, [staff]);
 
-  const handleMouseUp = useCallback(() => {
+    // Check if mousedown on playhead area (staff region)
+    if (x >= barStartX && x < finalBarX && y >= staffTop - 40 && y <= staffTop + barHeight + 40) {
+      if (mode !== 'design') {
+        setIsDraggingPlayhead(true);
+      }
+    }
+  }, [staff, mode, getHitNote]);
+
+  const handleMouseUp = useCallback((event: React.MouseEvent<HTMLCanvasElement>) => {
+    if (draggedNote && mode === 'design') {
+      const canvas = canvasRef.current;
+      if (canvas) {
+        const rect = canvas.getBoundingClientRect();
+        const x = event.clientX - rect.left;
+        const y = event.clientY - rect.top;
+
+        const staffTop = 40;
+        const barHeight = RenderConfig.staffLineSpacing * 4;
+        
+        // If dragged outside staff, treat as remove target or just ignore? User requested "dragging them out" to remove.
+        if (y < staffTop - 60 || y > staffTop + barHeight + 60) {
+          if (onRemoveNote) {
+            onRemoveNote(staff.id, draggedNote.barIndex, draggedNote.beatIndex, draggedNote.note.id);
+          }
+        } else {
+          // Calculate new bar, beat, pitch
+          const barStartX = 130;
+          const relativeX = x - barStartX;
+          
+          if (relativeX >= 0) {
+            const beatsPerBar = staff.bars[0]?.beats.length || 4;
+            const barIndex = Math.floor(relativeX / RenderConfig.barWidth);
+            const xInBar = relativeX % RenderConfig.barWidth;
+            const beatWidth = RenderConfig.barWidth / beatsPerBar;
+            const beatIndex = Math.floor(xInBar / beatWidth);
+
+            if (barIndex >= 0 && barIndex < staff.bars.length && beatIndex >= 0 && beatIndex < beatsPerBar) {
+              const { pitch, octave } = getYToPitch(y);
+              
+              // Only move if it actually changed position (or pitch/octave) to prevent unnecessary updates
+              // BUT we also need to consider if it moved within the same beat but changed pitch
+              if (onMoveNote && (
+                  draggedNote.barIndex !== barIndex || 
+                  draggedNote.beatIndex !== beatIndex || 
+                  draggedNote.note.pitch !== pitch || 
+                  draggedNote.note.octave !== octave)) {
+                onMoveNote(
+                  staff.id, 
+                  draggedNote.barIndex, 
+                  draggedNote.beatIndex, 
+                  draggedNote.note.id, 
+                  barIndex, 
+                  beatIndex, 
+                  pitch, 
+                  octave
+                );
+              }
+            }
+          }
+        }
+      }
+      setDraggedNote(null);
+    }
+    
     setIsDraggingPlayhead(false);
-  }, []);
+  }, [draggedNote, mode, staff, onRemoveNote, onMoveNote, getYToPitch]);
 
   const handleMouseLeave = useCallback(() => {
     setHoveredButton(null);
     setIsDraggingPlayhead(false);
-  }, []);
+    if (draggedNote) {
+      setDraggedNote(null); // Cancel drag if left canvas
+    }
+  }, [draggedNote]);
 
   return (
     <canvas
@@ -609,11 +837,12 @@ export const MusicStaffCanvas = function(props: MusicStaffCanvasProps) {
       width={width}
       height={height}
       onClick={handleCanvasClick}
+      onDoubleClick={handleDoubleClick}
       onMouseDown={handleMouseDown}
       onMouseMove={handleMouseMove}
       onMouseUp={handleMouseUp}
       onMouseLeave={handleMouseLeave}
-      style={{ cursor: hoveredButton ? 'pointer' : isDraggingPlayhead ? 'grabbing' : 'default', display: 'block' }}
+      style={{ cursor: draggedNote ? 'grabbing' : (hoveredButton ? 'pointer' : isDraggingPlayhead ? 'grabbing' : 'default'), display: 'block' }}
     />
   );
 };

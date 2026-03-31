@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { audioEngine, type AudioNote } from '../services/audioEngine';
 import type { MusicNote, NoteDuration } from '../types/musicTypes';
 
@@ -9,13 +9,15 @@ export interface UsePlaybackReturn {
   duration: number;
   tempo: number;
   volume: number;
+  instrumentName: string;
   play: () => Promise<void>;
   pause: () => void;
   stop: () => void;
   seek: (position: number) => void;
   setTempo: (bpm: number) => void;
   setVolume: (volume: number) => void;
-  loadNotes: (notes: { pitch: MusicNote; duration: NoteDuration }[]) => void;
+  setInstrument: (name: string) => Promise<void>;
+  loadNotes: (notes: { pitch: MusicNote; duration: NoteDuration; beatIndex?: number; startTime?: number }[]) => void;
   playNote: (note: MusicNote, duration?: NoteDuration, velocity?: number) => void;
 }
 
@@ -26,10 +28,13 @@ export const usePlayback = (): UsePlaybackReturn => {
   const [duration, setDuration] = useState(0);
   const [tempo, setTempoState] = useState(120);
   const [volume, setVolumeState] = useState(0.8);
+  const [instrumentName, setInstrumentName] = useState('acoustic_grand_piano');
 
   // Initialize audio engine
   useEffect(() => {
-    audioEngine.initialize();
+    audioEngine.initialize().then(() => {
+      setInstrumentName(audioEngine.getInstrumentName());
+    });
   }, []);
 
   // Update playback state periodically
@@ -91,19 +96,35 @@ export const usePlayback = (): UsePlaybackReturn => {
     setVolumeState(vol);
   }, []);
 
-  const loadNotes = useCallback((notes: { pitch: MusicNote; duration: NoteDuration }[]) => {
-    const audioNotes: AudioNote[] = notes.map((note, index) => ({
-      ...note,
-      startTime: index * 0.5, // Simple timing - 0.5 seconds apart
-      velocity: 0.8
-    }));
+  const setInstrument = useCallback(async (name: string) => {
+    await audioEngine.loadInstrument(name);
+    setInstrumentName(name);
+  }, []);
+
+  const loadNotes = useCallback((notes: { pitch: MusicNote; duration: NoteDuration; beatIndex?: number; startTime?: number }[]) => {
+    const secondsPerBeat = 60 / tempo;
+    const audioNotes: AudioNote[] = notes.map((note, index) => {
+      let startTime = index * 0.5;
+      if (note.startTime !== undefined) {
+        startTime = note.startTime;
+      } else if (note.beatIndex !== undefined) {
+        startTime = note.beatIndex * secondsPerBeat;
+      }
+      return {
+        pitch: note.pitch,
+        duration: note.duration,
+        startTime,
+        velocity: 0.8
+      };
+    });
 
     audioEngine.loadSequence(audioNotes);
     
-    // Calculate total duration (rough estimate)
-    const totalDuration = audioNotes.length * 0.5 + 2; // Add 2 seconds buffer
+    // Calculate total duration
+    const maxStartTime = audioNotes.length > 0 ? Math.max(...audioNotes.map(n => n.startTime)) : 0;
+    const totalDuration = maxStartTime + 2; // Add 2 seconds buffer
     setDuration(totalDuration);
-  }, []);
+  }, [tempo]);
 
   const playNote = useCallback((note: MusicNote, dur: NoteDuration = 'quarter', velocity: number = 0.8) => {
     audioEngine.playNote(note, dur, velocity);
@@ -116,12 +137,14 @@ export const usePlayback = (): UsePlaybackReturn => {
     duration,
     tempo,
     volume,
+    instrumentName,
     play,
     pause,
     stop,
     seek,
     setTempo,
     setVolume,
+    setInstrument,
     loadNotes,
     playNote
   };

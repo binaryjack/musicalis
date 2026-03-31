@@ -1,3 +1,4 @@
+import Soundfont from 'soundfont-player';
 import * as Tone from 'tone';
 import type { MusicNote, NoteDuration } from '../types/musicTypes';
 
@@ -10,33 +11,54 @@ export interface AudioNote {
 
 export class AudioEngine {
   private synth: Tone.PolySynth;
+  private instrument: Soundfont.InstrumentPlayer | null = null;
+  private currentInstrumentName: string = 'acoustic_grand_piano';
+  private masterVolume: Tone.Volume;
   private transport: typeof Tone.Transport;
   private currentSequence: Tone.Part | null = null;
   private isInitialized = false;
+  private _volume: number = 0.8;
 
   constructor() {
-    this.synth = new Tone.PolySynth(Tone.Synth).toDestination();
+    this.masterVolume = new Tone.Volume(Tone.gainToDb(0.8)).toDestination();
+    this.synth = new Tone.PolySynth(Tone.Synth).connect(this.masterVolume);
     this.transport = Tone.Transport;
     
     // Configure default settings
     this.synth.set({
-      oscillator: {
-        type: 'triangle'
-      },
-      envelope: {
-        attack: 0.02,
-        decay: 0.1,
-        sustain: 0.3,
-        release: 1
-      }
+      oscillator: { type: 'triangle' },
+      envelope: { attack: 0.02, decay: 0.1, sustain: 0.3, release: 1 }
     });
   }
 
   async initialize() {
     if (this.isInitialized) return;
-    
-    await Tone.start();
-    this.isInitialized = true;
+    this.isInitialized = true; // Mark early to prevent double calls
+    await this.loadInstrument(this.currentInstrumentName);
+  }
+
+  async loadInstrument(instrumentName: string) {
+    this.currentInstrumentName = instrumentName;
+    try {
+      // Access the raw AudioContext
+      const ac = Tone.getContext().rawContext as unknown as AudioContext;
+      
+      this.instrument = await Soundfont.instrument(
+        ac,
+        instrumentName as any,
+        {
+          format: 'mp3',
+          soundfont: 'FluidR3_GM'
+        }
+      );
+    } catch (e) {
+      console.warn("Failed to load instrument: ", instrumentName, e);
+      this.instrument = null; //Fallback to synth
+    }
+  }
+
+  getInstrumentName() {
+    return this.currentInstrumentName;
   }
 
   private convertNoteToPitch(note: MusicNote): string {
@@ -55,13 +77,29 @@ export class AudioEngine {
     return durations[duration] || '4n';
   }
 
-  playNote(note: MusicNote, duration: NoteDuration = 'quarter', velocity: number = 0.8) {
-    if (!this.isInitialized) return;
+async playNote(note: MusicNote, duration: NoteDuration = 'quarter', velocity: number = 0.8) {
+    if (Tone.context.state !== 'running') {
+      try {
+        await Tone.start();
+      } catch (e) {
+        console.warn("Could not start Tone context:", e);
+        return;
+      }
+    }
     
+    if (!this.isInitialized) {
+      await this.initialize();
+    }
+
     const pitch = this.convertNoteToPitch(note);
-    const time = this.convertDurationToTime(duration);
-    
-    this.synth.triggerAttackRelease(pitch, time, undefined, velocity);
+    const timeToSeconds = Tone.Time(this.convertDurationToTime(duration)).toSeconds();
+    const effectiveVelocity = velocity * this._volume;
+
+    if (this.instrument) {
+      this.instrument.play(pitch, Tone.context.currentTime, { duration: timeToSeconds, gain: effectiveVelocity });
+    } else {
+      this.synth.triggerAttackRelease(pitch, this.convertDurationToTime(duration), undefined, effectiveVelocity);
+    }
   }
 
   loadSequence(notes: AudioNote[]) {
@@ -74,22 +112,41 @@ export class AudioEngine {
       note: {
         pitch: this.convertNoteToPitch(note.pitch),
         duration: this.convertDurationToTime(note.duration),
+        timeSecs: Tone.Time(this.convertDurationToTime(note.duration)).toSeconds(),
         velocity: note.velocity || 0.8
       }
     }));
 
     this.currentSequence = new Tone.Part((time, value) => {
-      this.synth.triggerAttackRelease(
-        value.note.pitch, 
-        value.note.duration, 
-        time, 
-        value.note.velocity
-      );
+      const effectiveVelocity = value.note.velocity * this._volume;
+      if (this.instrument) {
+        this.instrument.play(value.note.pitch, time, { duration: value.note.timeSecs, gain: effectiveVelocity });
+      } else {
+        this.synth.triggerAttackRelease(
+          value.note.pitch, 
+          value.note.duration, 
+          time, 
+          effectiveVelocity
+        );
+      }
     }, sequence);
+    
+    // Crucial: start the sequence so it plays when the transport is running
+    this.currentSequence.start(0);
   }
 
-  play() {
-    if (!this.isInitialized) return;
+async play() {
+    if (Tone.context.state !== 'running') {
+      try {
+        await Tone.start();
+      } catch (e) {
+        console.warn("Could not start Tone context:", e);
+      }
+    }
+    
+    if (!this.isInitialized) {
+      await this.initialize();
+    }
     
     this.transport.start();
   }
@@ -129,7 +186,8 @@ export class AudioEngine {
   }
 
   setVolume(volume: number) {
-    this.synth.volume.value = Tone.gainToDb(volume);
+    this._volume = volume;
+    this.masterVolume.volume.value = Tone.gainToDb(volume);
   }
 
   dispose() {

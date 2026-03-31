@@ -1,22 +1,24 @@
 import { useEffect, useState } from 'react';
-import { useEditor } from '../features/editor/hooks/useEditor';
-import { useProject } from '../hooks/useProject';
-import { usePlayback } from '../hooks/usePlayback';
-import { Dropdown } from '../components/atoms/dropdown';
-import { BpmControl } from '../components/atoms/bpm-control';
 import { AddStaffButton } from '../components/atoms/add-staff-button';
-import { TimeSignatureControl } from '../components/atoms/time-signature-control';
+import { BpmControl } from '../components/atoms/bpm-control';
 import { ConfirmModal } from '../components/atoms/confirm-modal';
+import { Dropdown } from '../components/atoms/dropdown';
+import { TimeSignatureControl } from '../components/atoms/time-signature-control';
+import type { MenuItem } from '../components/molecules/menu-bar';
 import { MenuBar } from '../components/molecules/menu-bar';
 import { TransportBar } from '../components/molecules/transport-bar';
 import { MusicStaffCanvas } from '../components/organisms/music-staff-canvas';
-import type { NoteDuration, Staff } from '../types/musicTypes';
-import type { MenuItem } from '../components/molecules/menu-bar';
-import { 
-  parseTimeSignature, 
-  initializeStaff, 
-  createEmptyBar 
+import { useEditor } from '../features/editor/hooks/useEditor';
+import { usePlayback } from '../hooks/usePlayback';
+import { useProject } from '../hooks/useProject';
+import {
+    createEmptyBar,
+    initializeStaff,
+    parseTimeSignature
 } from '../shared/utils/music-helpers';
+import type { NoteDuration, Staff } from '../types/musicTypes';
+
+import { MIDI_INSTRUMENTS } from '../shared/utils/midi-instruments';
 
 export const EditorPage = () => {
   const { editorUI: { mode }, setMode } = useEditor();
@@ -188,7 +190,13 @@ export const EditorPage = () => {
     
     // Sort by beatIndex
     allNotes.sort((a, b) => a.beatIndex - b.beatIndex);
-    // Note: playback.loadNotes needs updating for new structure
+    
+    playback.loadNotes(allNotes.map(n => ({
+      pitch: n.pitch as any,
+      duration: n.duration as NoteDuration,
+      beatIndex: n.beatIndex
+    })));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [staffs]);
 
   const handleAddStaff = () => {
@@ -322,7 +330,115 @@ export const EditorPage = () => {
     playback.seek(position);
   };
 
+  const handleRemoveNote = (staffId: string, barIndex: number, beatIndex: number, noteId: string) => {
+    setStaffs(prevStaffs => 
+      prevStaffs.map(staff => {
+        if (staff.id === staffId) {
+          const updatedBars = staff.bars.map((bar, bIdx) => {
+            if (bIdx === barIndex) {
+              const updatedBeats = bar.beats.map((beat, btIdx) => {
+                if (btIdx === beatIndex) {
+                  return {
+                    ...beat,
+                    notes: beat.notes.filter(note => note.id !== noteId)
+                  };
+                }
+                return beat;
+              });
+              return { ...bar, beats: updatedBeats };
+            }
+            return bar;
+          });
+          return { ...staff, bars: updatedBars };
+        }
+        return staff;
+      })
+    );
+  };
+
+  const handleMoveNote = (
+    staffId: string, 
+    sourceBarIndex: number, 
+    sourceBeatIndex: number, 
+    noteId: string, 
+    targetBarIndex: number, 
+    targetBeatIndex: number, 
+    pitch: string, 
+    octave: number
+  ) => {
+    setStaffs(prevStaffs => 
+      prevStaffs.map(staff => {
+        if (staff.id === staffId) {
+          let noteToMove: any = null;
+          
+          // First pass: find and remove the note
+          const tempBars = staff.bars.map((bar, bIdx) => {
+            if (bIdx === sourceBarIndex) {
+              const tempBeats = bar.beats.map((beat, btIdx) => {
+                if (btIdx === sourceBeatIndex) {
+                  noteToMove = beat.notes.find(n => n.id === noteId);
+                  return {
+                    ...beat,
+                    notes: beat.notes.filter(n => n.id !== noteId)
+                  };
+                }
+                return beat;
+              });
+              return { ...bar, beats: tempBeats };
+            }
+            return bar;
+          });
+
+          if (!noteToMove) return staff;
+          
+          // Play preview if note pitch changed noticeably
+          if (noteToMove.pitch !== pitch || noteToMove.octave !== octave) {
+            try {
+              if (playback && typeof playback.playNote === 'function') {
+                playback.playNote(`${pitch}${octave}` as any, noteToMove.duration);
+              }
+            } catch (e) {
+              console.warn("Could not play note preview", e);
+            }
+          }
+
+          // Update the note's pitch and octave
+          const updatedNote = { ...noteToMove, pitch, octave };
+
+          // Second pass: add note to target location
+          const finalBars = tempBars.map((bar, bIdx) => {
+            if (bIdx === targetBarIndex) {
+              const finalBeats = bar.beats.map((beat, btIdx) => {
+                if (btIdx === targetBeatIndex) {
+                  return {
+                    ...beat,
+                    notes: [...beat.notes, updatedNote]
+                  };
+                }
+                return beat;
+              });
+              return { ...bar, beats: finalBeats };
+            }
+            return bar;
+          });
+
+          return { ...staff, bars: finalBars };
+        }
+        return staff;
+      })
+    );
+  };
+
   const handleAddNote = (staffId: string, barIndex: number, beatIndex: number, pitch: string, octave: number, duration: NoteDuration) => {
+    // Play preview automatically
+    try {
+      if (playback && typeof playback.playNote === 'function') {
+        playback.playNote(`${pitch}${octave}` as any, duration);
+      }
+    } catch (e) {
+      console.warn("Could not play note preview", e);
+    }
+
     setStaffs(prevStaffs =>
       prevStaffs.map(staff => {
         if (staff.id === staffId) {
@@ -418,6 +534,13 @@ export const EditorPage = () => {
         
         <div style={{ marginLeft: 'auto', display: 'flex', gap: '12px', alignItems: 'center' }}>
           <Dropdown
+            options={MIDI_INSTRUMENTS}
+            value={playback.instrumentName}
+            onChange={(val) => playback.setInstrument(val)}
+            placeholder="Select Instrument"
+          />
+
+          <Dropdown
             options={noteOptions}
             value={selectedDuration}
             onChange={(value) => setSelectedDuration(value as NoteDuration)}
@@ -497,10 +620,13 @@ export const EditorPage = () => {
                 darkMode={true}
                 selectedDuration={selectedDuration}
                 selectedRest={selectedRest}
+                mode={mode}
                 onAddBar={handleAddBar}
                 onRemoveBar={handleRemoveBar}
                 onPlayheadChange={handlePlayheadChange}
                 onAddNote={handleAddNote}
+                onRemoveNote={handleRemoveNote}
+                onMoveNote={handleMoveNote}
                 width={canvasWidth}
                 height={200}
               />
@@ -544,6 +670,19 @@ export const EditorPage = () => {
           onChange={handleBpmChange}
         />
         
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginLeft: '16px' }}>
+          <span title="Volume">🔊</span>
+          <input
+            type="range"
+            min="0"
+            max="1"
+            step="0.01"
+            value={playback.volume}
+            onChange={(e) => playback.setVolume(parseFloat(e.target.value))}
+            style={{ width: '80px', cursor: 'pointer' }}
+          />
+        </div>
+
         <div style={{
           backgroundColor: '#444',
           border: '1px solid #666',
