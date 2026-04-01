@@ -73,23 +73,22 @@ export const createAudioEngine = function() {
       await initialize();
     }
 
+    const pitch = convertNoteToPitch(note);
+    const timeValue = convertDurationToTime(duration);
+
     if (instrument && note) {
       try {
-        const pitch = convertNoteToPitch(note);
+        const durationSecs = Tone.Time(timeValue).toSeconds();
         instrument.play(pitch, undefined, {
-          duration: 0.5,
+          duration: durationSecs,
           gain: velocity / 127
         });
       } catch (error) {
         console.error('Failed to play note with instrument:', error);
-        const pitch = convertNoteToPitch(note);
-        const time = convertDurationToTime(duration);
-        synth.triggerAttackRelease(pitch, time, undefined, velocity);
+        synth.triggerAttackRelease(pitch, timeValue, undefined, velocity);
       }
     } else {
-      const pitch = convertNoteToPitch(note);
-      const time = convertDurationToTime(duration);
-      synth.triggerAttackRelease(pitch, time, undefined, velocity);
+      synth.triggerAttackRelease(pitch, timeValue, undefined, velocity);
     }
   };
 

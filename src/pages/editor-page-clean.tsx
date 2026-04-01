@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { AddStaffButton } from '../components/atoms/add-staff-button';
 import { BpmControl } from '../components/atoms/bpm-control';
 import { ConfirmModal } from '../components/atoms/confirm-modal';
@@ -12,7 +12,13 @@ import { useEditor } from '../features/editor/hooks/useEditor';
 import { usePlayback } from '../hooks/usePlayback';
 import { useProject } from '../hooks/useProject';
 import {
-    createEmptyBar,
+  canFitNoteInBar,
+  validateMeasureMatrix,
+  reconstructBarNotes,
+  createEmptyBar,
+    getEffectiveTimeSignature,
+    getBaseDurationForBeatValue,
+    getNoteDurationBeats,
     initializeStaff,
     parseTimeSignature
 } from '../shared/utils/music-helpers';
@@ -45,6 +51,22 @@ export const EditorPage = () => {
   const [selectedStaffId, setSelectedStaffId] = useState<string>('staff-1');
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [barToDelete, setBarToDelete] = useState<{staffId: string, barIndex: number} | null>(null);
+  
+  // Track selected note/rest for keyboard operations
+  const [selectedElement, setSelectedElement] = useState<{staffId: string, barIndex: number, beatIndex: number, note: any} | null>(null);
+
+  // Console Logs
+  const [logs, setLogs] = useState<{id: string, message: string, type: 'error'|'warning'|'info', timestamp: Date}[]>([]);
+  const [isConsoleOpen, setIsConsoleOpen] = useState(false);
+
+  const addLog = (message: string, type: 'error' | 'warning' | 'info' = 'info') => {
+    setLogs(prev => [{
+      id: Math.random().toString(36).substring(2, 11),
+      message,
+      type,
+      timestamp: new Date()
+    }, ...prev]);
+  };
 
   // Initialize time signature from first staff
   useEffect(() => {
@@ -74,9 +96,11 @@ export const EditorPage = () => {
     { value: 'sixteenth-rest', label: '16th', icon: '𝄿' },
   ];
 
-  const ToolboxButton = ({ active, onClick, icon, label }: { active: boolean, onClick: () => void, icon: string, label: string }) => (
+  const ToolboxButton = ({ active, onClick, icon, label, onContextMenu, children, className }: { active: boolean, onClick: () => void, icon: string, label: string, onContextMenu?: (e: React.MouseEvent) => void, children?: React.ReactNode, className?: string }) => (
     <button
+      className={className}
       onClick={onClick}
+      onContextMenu={onContextMenu}
       title={label}
       style={{
         width: '32px',
@@ -94,11 +118,113 @@ export const EditorPage = () => {
         padding: 0,
         boxShadow: active ? '0 0 0 2px rgba(74, 158, 255, 0.3)' : 'none',
         transition: 'all 0.1s ease',
+        position: 'relative',
       }}
     >
       {icon}
+      {children}
     </button>
   );
+
+  const ToolCategorySelector = ({ 
+    label, 
+    options, 
+    value, 
+    active, 
+    onChange 
+  }: { 
+    label: string, 
+    options: { value: string, label: string, icon: string }[], 
+    value: string, 
+    active: boolean, 
+    onChange: (val: string) => void 
+  }) => {
+    const [isOpen, setIsOpen] = useState(false);
+    const containerRef = useRef<HTMLDivElement>(null);
+    const [lastSelected, setLastSelected] = useState(options[2] || options[0]); // default to ~quarter
+
+    const currentOption = options.find(o => o.value === value);
+    const displayOption = currentOption || lastSelected;
+
+    useEffect(() => {
+      if (currentOption) setLastSelected(currentOption);
+    }, [currentOption]);
+
+    useEffect(() => {
+      const handleClickOutside = (e: MouseEvent) => {
+        if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+          setIsOpen(false);
+        }
+      };
+      if (isOpen) document.addEventListener('mousedown', handleClickOutside);
+      return () => document.removeEventListener('mousedown', handleClickOutside);
+    }, [isOpen]);
+
+    return (
+      <div ref={containerRef} style={{ position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px', zIndex: isOpen ? 10 : 1 }}>
+        <div style={{ fontSize: '10px', color: '#888', textTransform: 'uppercase', marginBottom: '-4px' }}>{label}</div>
+        
+        <ToolboxButton
+          active={active}
+          onClick={() => {
+            if (active) {
+              setIsOpen(!isOpen);
+            } else {
+              onChange(displayOption.value);
+            }
+          }}
+          onContextMenu={(e) => {
+            e.preventDefault();
+            setIsOpen(true);
+          }}
+          icon={displayOption.icon}
+          label={`${displayOption.label} (Click active, or right-click, for more tools)`}
+        >
+          {/* Drawer indicator triangle */}
+          <div style={{ 
+            position: 'absolute', 
+            bottom: '2px', 
+            right: '2px', 
+            width: 0, 
+            height: 0, 
+            borderStyle: 'solid', 
+            borderWidth: '0 0 6px 6px', 
+            borderColor: 'transparent transparent #888 transparent' 
+          }} />
+        </ToolboxButton>
+
+        {isOpen && (
+          <div style={{
+            position: 'absolute',
+            left: '100%',
+            top: '16px',
+            marginLeft: '8px',
+            backgroundColor: '#2a2a2a',
+            border: '1px solid #444',
+            borderRadius: '4px',
+            display: 'flex',
+            flexDirection: 'row',
+            padding: '4px',
+            gap: '4px',
+            boxShadow: '0 4px 12px rgba(0,0,0,0.5)',
+          }}>
+            {options.map(opt => (
+              <ToolboxButton
+                key={opt.value}
+                active={opt.value === value && active}
+                onClick={() => {
+                  onChange(opt.value);
+                  setIsOpen(false);
+                }}
+                icon={opt.icon}
+                label={opt.label}
+              />
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  };
 
   const videoOptions = [
     { value: '720p', label: '720p HD', icon: '📺' },
@@ -365,14 +491,13 @@ export const EditorPage = () => {
             if (bIdx === barIndex) {
               const updatedBeats = bar.beats.map((beat, btIdx) => {
                 if (btIdx === beatIndex) {
-                  return {
-                    ...beat,
-                    notes: beat.notes.filter(note => note.id !== noteId)
-                  };
+                  const remainingNotes = beat.notes.filter(note => note.id !== noteId);
+                  return { ...beat, notes: remainingNotes };
                 }
                 return beat;
               });
-              return { ...bar, beats: updatedBeats };
+              const timeSig = getEffectiveTimeSignature(bar, staff, defaultTimeSignature);
+              return reconstructBarNotes({ ...bar, beats: updatedBeats }, timeSig);
             }
             return bar;
           });
@@ -398,16 +523,16 @@ export const EditorPage = () => {
         if (staff.id === staffId) {
           let noteToMove: Note | null = null;
           
-          // First pass: find and remove the note
+          // First pass: find and remove the note without manually adding rests
           const tempBars = staff.bars.map((bar, bIdx) => {
             if (bIdx === sourceBarIndex) {
               const tempBeats = bar.beats.map((beat, btIdx) => {
                 if (btIdx === sourceBeatIndex) {
-                  noteToMove = beat.notes.find(n => n.id === noteId);
-                  return {
-                    ...beat,
-                    notes: beat.notes.filter(n => n.id !== noteId)
-                  };
+                  const targetNote = beat.notes.find(n => n.id === noteId);
+                  if (targetNote) noteToMove = targetNote;
+                  
+                  const remainingNotes = beat.notes.filter(n => n.id !== noteId);
+                  return { ...beat, notes: remainingNotes };
                 }
                 return beat;
               });
@@ -429,22 +554,30 @@ export const EditorPage = () => {
             }
           }
 
-          // Update the note's pitch and octave
-          const updatedNote = { ...noteToMove, pitch, octave };
+          // Update the note's position, pitch and octave
+          const updatedNote = { 
+            ...noteToMove, 
+            pitch, 
+            octave, 
+            beatIndex: Math.floor(targetBeatIndex),
+            subdivisionOffset: targetBeatIndex - Math.floor(targetBeatIndex)
+          };
 
-          // Second pass: add note to target location
+          // Second pass: add note to target location and run reconstruct matrix
           const finalBars = tempBars.map((bar, bIdx) => {
-            if (bIdx === targetBarIndex) {
-              const finalBeats = bar.beats.map((beat, btIdx) => {
-                if (btIdx === targetBeatIndex) {
-                  return {
-                    ...beat,
-                    notes: [...beat.notes, updatedNote]
-                  };
-                }
-                return beat;
-              });
-              return { ...bar, beats: finalBeats };
+            // Need to reconstruct if it's the source OR the target bar
+            if (bIdx === targetBarIndex || bIdx === sourceBarIndex) {
+              let finalBeats = bar.beats;
+              if (bIdx === targetBarIndex) {
+                finalBeats = bar.beats.map((beat, btIdx) => {
+                  if (btIdx === Math.floor(targetBeatIndex)) {
+                    return { ...beat, notes: [...beat.notes, updatedNote] };
+                  }
+                  return beat;
+                });
+              }
+              const timeSig = getEffectiveTimeSignature(bar, staff, defaultTimeSignature);
+              return reconstructBarNotes({ ...bar, beats: finalBeats }, timeSig);
             }
             return bar;
           });
@@ -456,10 +589,31 @@ export const EditorPage = () => {
     );
   };
 
-  const handleAddNote = (staffId: string, barIndex: number, beatIndex: number, pitch: string, octave: number, duration: NoteDuration) => {
+  const handleAddNote = (staffId: string, barIndex: number, rawBeatIndex: number, pitch: string, octave: number, duration: NoteDuration) => {
+    // Extract base beatIndex and subdivision offset from the raw canvas drop coordinates
+    const beatIndex = Math.floor(rawBeatIndex);
+    const subdivisionOffset = rawBeatIndex - beatIndex;
+
+    // Check constraints first before adding
+    const currentStaff = staffs.find(s => s.id === staffId);
+    if (currentStaff) {
+      const bar = currentStaff.bars[barIndex];
+      if (bar) {
+        const timeSig = getEffectiveTimeSignature(bar, currentStaff, defaultTimeSignature);
+        
+        if (!validateMeasureMatrix(bar, { beatIndex, subdivisionOffset, duration }, timeSig)) {
+          const msg = `Cannot fit ${duration} note at beat ${beatIndex + 1} (offset +${subdivisionOffset}) in ${timeSig.display} measure. It would exceed bounds or collide with an existing element via matrix check.`;
+          console.warn(msg);
+          addLog(msg, 'warning');
+          setIsConsoleOpen(true);
+          return; // Block addition
+        }
+      }
+    }
+
     // Play preview automatically
     try {
-      if (playback && typeof playback.playNote === 'function') {
+      if (playback && typeof playback.playNote === 'function' && !selectedRest) {
         playback.playNote(`${pitch}${octave}` as MusicNote, duration);
       }
     } catch (e) {
@@ -471,31 +625,33 @@ export const EditorPage = () => {
         if (staff.id === staffId) {
           const updatedBars = staff.bars.map((bar, bIdx) => {
             if (bIdx === barIndex) {
+              const timeSig = getEffectiveTimeSignature(bar, staff, defaultTimeSignature);
               const updatedBeats = bar.beats.map((beat, btIdx) => {
                 if (btIdx === beatIndex) {
-                  // Add note to this beat
+                  // Add note (or rest) to this beat
+                  const isRest = !!selectedRest;
                   const newNote = {
-                    id: `note-${Date.now()}-${Math.random()}`,
-                    pitch,
-                    octave,
+                    id: `${isRest ? 'rest' : 'note'}-${Date.now()}-${Math.random()}`,
+                    type: isRest ? 'rest' : 'note',
+                    pitch: isRest ? 'R' : pitch,
+                    octave: isRest ? 0 : octave,
                     duration,
                     beatIndex,
-                    subdivisionOffset: 0,
+                    subdivisionOffset,
                     visualOffsetX: 0,
                     visualOffsetY: 0,
-                    velocity: 0.8,
+                    velocity: isRest ? 0 : 0.8,
                   };
                   return {
                     ...beat,
-                    notes: [...beat.notes, newNote]
+                    notes: [...beat.notes, newNote as any]
                   };
                 }
                 return beat;
               });
-              return {
-                ...bar,
-                beats: updatedBeats
-              };
+              
+              const updatedBar = { ...bar, beats: updatedBeats };
+              return reconstructBarNotes(updatedBar, timeSig);
             }
             return bar;
           });
@@ -515,6 +671,7 @@ export const EditorPage = () => {
         if (staff.id === staffId) {
           const updatedBars = staff.bars.map((bar, bIdx) => {
             if (bIdx === barIndex) {
+              const timeSig = getEffectiveTimeSignature(bar, staff, defaultTimeSignature);
               const updatedBeats = bar.beats.map((beat, btIdx) => {
                 if (btIdx === beatIndex) {
                   const newRest = {
@@ -536,10 +693,9 @@ export const EditorPage = () => {
                 }
                 return beat;
               });
-              return {
-                ...bar,
-                beats: updatedBeats
-              };
+              
+              const updatedBar = { ...bar, beats: updatedBeats };
+              return reconstructBarNotes(updatedBar, timeSig);
             }
             return bar;
           });
@@ -552,6 +708,71 @@ export const EditorPage = () => {
       })
     );
   };
+
+  useEffect(() => {
+    const handleGlobalKeyDown = (e: KeyboardEvent) => {
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
+        return;
+      }
+      
+      if (!selectedElement) return;
+
+      const { staffId, barIndex, beatIndex, note } = selectedElement;
+
+      // Delete/Backspace to remove note/rest
+      if (e.key === 'Delete' || e.key === 'Backspace') {
+        const staff = staffs.find(s => s.id === staffId);
+        if (staff) {
+          // If we delete an actual note, it replaces with a rest for deletion integrity.
+          // Since the user is explicitly deleting using a key, use the same logic.
+          handleRemoveNote(staffId, barIndex, beatIndex, note.id);
+          setSelectedElement(null);
+        }
+      } else if (e.key.toLowerCase() === 'r' || e.key.toLowerCase() === 't') {
+        // Toggle rest/note
+        e.preventDefault();
+        const isCurrentlyRest = note.type === 'rest' || note.pitch === 'R';
+        
+        setStaffs(prevStaffs => 
+          prevStaffs.map(staff => {
+            if (staff.id === staffId) {
+              const updatedBars = staff.bars.map((bar, bIdx) => {
+                if (bIdx === barIndex) {
+                  const updatedBeats = bar.beats.map((beat, btIdx) => {
+                    if (btIdx === beatIndex) {
+                      const updatedNotes = beat.notes.map(n => {
+                        if (n.id === note.id) {
+                          const newType = isCurrentlyRest ? 'note' : 'rest';
+                          return {
+                            ...n,
+                            type: newType,
+                            pitch: isCurrentlyRest ? 'C' : 'R', // Default to middle C if becoming a note
+                            octave: isCurrentlyRest ? 5 : 0,
+                            velocity: isCurrentlyRest ? 0.8 : 0,
+                          } as any;
+                        }
+                        return n;
+                      });
+                      return { ...beat, notes: updatedNotes };
+                    }
+                    return beat;
+                  });
+                  return { ...bar, beats: updatedBeats };
+                }
+                return bar;
+              });
+              return { ...staff, bars: updatedBars };
+            }
+            return staff;
+          })
+        );
+        setSelectedElement(null);
+      }
+    };
+    
+    document.addEventListener('keydown', handleGlobalKeyDown);
+    return () => document.removeEventListener('keydown', handleGlobalKeyDown);
+  }, [selectedElement, staffs]);
 
   if (project.isLoading) {
     return <div style={{color: '#fff', padding: '20px'}}>Loading project...</div>;
@@ -661,45 +882,33 @@ export const EditorPage = () => {
           alignItems: 'center',
           padding: '16px 0',
           gap: '16px',
-          overflowY: 'auto'
+          overflow: 'visible',
+          zIndex: 50
         }}>
-          {/* Notes Selection */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', alignItems: 'center' }}>
-            <div style={{ fontSize: '10px', color: '#888', textTransform: 'uppercase', marginBottom: '4px' }}>Notes</div>
-            {noteOptions.map(opt => (
-              <ToolboxButton
-                key={opt.value}
-                active={selectedDuration === opt.value}
-                onClick={() => {
-                  setSelectedDuration(opt.value as NoteDuration);
-                  setSelectedRest(''); // clear rest selection when note is selected
-                }}
-                icon={opt.icon}
-                label={opt.label + ' Note'}
-              />
-            ))}
-          </div>
+          <ToolCategorySelector
+            label="Notes"
+            options={noteOptions}
+            value={selectedDuration}
+            active={selectedRest === ''}
+            onChange={(val) => {
+              setSelectedDuration(val as NoteDuration);
+              setSelectedRest('');
+            }}
+          />
 
           <div style={{ width: '30px', height: '1px', backgroundColor: '#444' }} />
 
-          {/* Rests Selection */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', alignItems: 'center' }}>
-            <div style={{ fontSize: '10px', color: '#888', textTransform: 'uppercase', marginBottom: '4px' }}>Rests</div>
-            {restOptions.map(opt => (
-              <ToolboxButton
-                key={opt.value}
-                active={selectedRest === opt.value}
-                onClick={() => {
-                  setSelectedRest(opt.value);
-                  // Update duration to match the rest size so they take correct space
-                  const noteValue = opt.value.replace('-rest', '') as NoteDuration;
-                  setSelectedDuration(noteValue);
-                }}
-                icon={opt.icon}
-                label={opt.label + ' Rest'}
-              />
-            ))}
-          </div>
+          <ToolCategorySelector
+            label="Rests"
+            options={restOptions}
+            value={selectedRest}
+            active={selectedRest !== ''}
+            onChange={(val) => {
+              setSelectedRest(val);
+              const noteValue = val.replace('-rest', '') as NoteDuration;
+              setSelectedDuration(noteValue);
+            }}
+          />
         </div>
 
         {/* MAIN CANVAS AREA */}
@@ -740,6 +949,8 @@ export const EditorPage = () => {
                 selectedDuration={selectedDuration}
                 selectedRest={selectedRest}
                 mode={mode}
+                selectedElementId={selectedElement?.note.id || null}
+                onSelectNote={(note) => setSelectedElement(note ? {staffId: staff.id, barIndex: note.barIndex, beatIndex: note.beatIndex, note: note.note} : null)}
                 onAddBar={handleAddBar}
                 onRemoveBar={handleRemoveBar}
                 onPlayheadChange={handlePlayheadChange}
@@ -826,6 +1037,87 @@ export const EditorPage = () => {
         </span>
       </div>
       
+      {/* BOTTOM CONSOLE LOGS */}
+      <div style={{
+        position: 'relative',
+        backgroundColor: '#111',
+        borderTop: '1px solid #444',
+        display: 'flex',
+        flexDirection: 'column',
+        height: isConsoleOpen ? '200px' : '30px',
+        transition: 'height 0.2s ease',
+        zIndex: 100,
+      }}>
+        {/* Console Header / Toggle */}
+        <div 
+          onClick={() => setIsConsoleOpen(!isConsoleOpen)}
+          style={{
+            height: '30px',
+            minHeight: '30px',
+            display: 'flex',
+            alignItems: 'center',
+            padding: '0 16px',
+            cursor: 'pointer',
+            backgroundColor: '#222',
+            borderBottom: isConsoleOpen ? '1px solid #444' : 'none',
+            fontSize: '12px',
+            userSelect: 'none',
+            justifyContent: 'space-between'
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <span style={{ transform: isConsoleOpen ? 'rotate(90deg)' : 'rotate(0deg)', transition: 'transform 0.2s', display: 'inline-block' }}>▶</span>
+            <span style={{ fontWeight: 'bold' }}>Console / Rules Log</span>
+            {logs.length > 0 && (
+              <span style={{ 
+                backgroundColor: logs[0].type === 'error' ? '#cc0000' : logs[0].type === 'warning' ? '#cc8800' : '#4a9eff', 
+                color: '#fff', 
+                padding: '2px 6px', 
+                borderRadius: '10px',
+                fontSize: '10px'
+              }}>
+                {logs.length}
+              </span>
+            )}
+          </div>
+          <button 
+            onClick={(e) => { e.stopPropagation(); setLogs([]); setIsConsoleOpen(false); }}
+            style={{ background: 'none', border: 'none', color: '#888', cursor: 'pointer', fontSize: '10px' }}
+          >
+            Clear
+          </button>
+        </div>
+
+        {/* Console Body */}
+        {isConsoleOpen && (
+          <div style={{ flex: 1, overflowY: 'auto', padding: '8px 0' }}>
+            {logs.length === 0 ? (
+              <div style={{ color: '#666', padding: '0 16px', fontSize: '12px', fontStyle: 'italic' }}>No logs to display.</div>
+            ) : (
+              logs.map(log => (
+                <div key={log.id} style={{
+                  padding: '4px 16px',
+                  borderBottom: '1px solid #2a2a2a',
+                  display: 'flex',
+                  alignItems: 'flex-start',
+                  gap: '12px',
+                  fontSize: '13px',
+                  color: log.type === 'error' ? '#ff6b6b' : log.type === 'warning' ? '#ffc107' : '#4a9eff',
+                  backgroundColor: log.type === 'error' ? 'rgba(255, 0, 0, 0.05)' : log.type === 'warning' ? 'rgba(255, 193, 7, 0.05)' : 'transparent',
+                }}>
+                  <div style={{ width: '60px', flexShrink: 0, color: '#666', fontSize: '11px', marginTop: '2px' }}>
+                    {log.timestamp.toLocaleTimeString([], { hour12: false })}
+                  </div>
+                  <div>
+                    <strong>[{log.type.toUpperCase()}]</strong> {log.message}
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        )}
+      </div>
+
       {/* Confirmation Modal */}
       <ConfirmModal
         isOpen={showDeleteModal}

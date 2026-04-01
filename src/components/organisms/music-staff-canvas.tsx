@@ -1,5 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
+    getNoteDurationBeats
+} from '../../shared/utils/music-helpers';
+import {
     getAccidentalGlyph,
     getClefGlyph,
     getFlagGlyph,
@@ -29,6 +32,8 @@ interface MusicStaffCanvasProps {
   onAddRest?: (staffId: string, barIndex: number, beatIndex: number, duration: NoteDuration) => void;
   onRemoveNote?: (staffId: string, barIndex: number, beatIndex: number, noteId: string) => void;
   onMoveNote?: (staffId: string, sourceBarIndex: number, sourceBeatIndex: number, noteId: string, targetBarIndex: number, targetBeatIndex: number, pitch: string, octave: number) => void;
+  selectedElementId?: string | null;
+  onSelectNote?: (note: { barIndex: number, beatIndex: number, note: Note } | null) => void;
 }
 
 const RenderConfig = {
@@ -54,6 +59,7 @@ export const MusicStaffCanvas = function(props: MusicStaffCanvasProps) {
     playheadPosition = 0,
     darkMode = false,
     selectedDuration = 'quarter',
+    selectedRest,
     selectedTool,
     onAddBar,
     onRemoveBar,
@@ -62,6 +68,8 @@ export const MusicStaffCanvas = function(props: MusicStaffCanvasProps) {
     onAddRest,
     onRemoveNote,
     onMoveNote,
+    selectedElementId,
+    onSelectNote,
   } = props;
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -328,6 +336,9 @@ export const MusicStaffCanvas = function(props: MusicStaffCanvasProps) {
       const beatWidth = RenderConfig.barWidth / beatsCount;
       
       bar.beats.forEach((beat, beatIndex) => {
+        // Compute precise visual dimensions
+        const timeSig = bar.timeSignature || staff.timeSignature || { beatsPerMeasure: 4, beatValue: 4, display: '4/4' };
+        
         // Draw light beat separator lines (except for first beat which has bar line)
         if (beatIndex > 0) {
           const beatLineX = barX + (beatIndex * beatWidth);
@@ -341,6 +352,24 @@ export const MusicStaffCanvas = function(props: MusicStaffCanvasProps) {
         
         const beatX = barX + (beatIndex * beatWidth) + (beatWidth / 2);
         
+        // --- HIGHLIGHT DURATION BACKGROUND FOR EACH NOTE ---
+        beat.notes.forEach(note => {
+          if (draggedNote && draggedNote.note.id === note.id) return;
+          
+          const durBeats = getNoteDurationBeats(note.duration);
+          const unitsTaken = durBeats / (4 / timeSig.beatValue); // Proportional multiplier
+          const bgWidth = beatWidth * unitsTaken;
+          
+          ctx.save();
+          ctx.fillStyle = darkMode ? 'rgba(74, 158, 255, 0.1)' : 'rgba(74, 158, 255, 0.2)';
+          // Fill from left edge of this beat to the right according to proportional length
+          ctx.fillRect(barX + (beatIndex * beatWidth), staffTop, bgWidth, RenderConfig.staffLineSpacing * 4);
+          // Optional border to show block edges clearly
+          ctx.strokeStyle = darkMode ? 'rgba(74, 158, 255, 0.3)' : 'rgba(74, 158, 255, 0.4)';
+          ctx.strokeRect(barX + (beatIndex * beatWidth), staffTop, bgWidth, RenderConfig.staffLineSpacing * 4);
+          ctx.restore();
+        });
+
         // Draw each note/rest in this beat
         beat.notes.forEach(note => {
           if (draggedNote && draggedNote.note.id === note.id) {
@@ -351,17 +380,32 @@ export const MusicStaffCanvas = function(props: MusicStaffCanvasProps) {
           if ((note as any).type === 'rest') {
             // Render rest
             const restY = staffTop + 20; // Center rest on staff
-            const adjustedX = beatX + (note.visualOffsetX || 0);
+            const realXOffset = (note.subdivisionOffset || 0) * beatWidth;
+            const adjustedX = beatX - (beatWidth / 2) + realXOffset + (beatWidth / 2) + (note.visualOffsetX || 0);
+
+            if (selectedElementId === note.id) {
+              ctx.shadowColor = '#4a9eff';
+              ctx.shadowBlur = 10;
+            }
             
             ctx.font = `${RenderConfig.noteFontSize}px Bravura`;
             ctx.fillStyle = textColor;
             const restGlyph = getRestGlyph(note.duration);
             ctx.fillText(restGlyph, adjustedX - 8, restY);
+            
+            ctx.shadowColor = 'transparent';
+            ctx.shadowBlur = 0;
           } else {
             // Render note (existing logic)
             const noteY = getNoteY(note.pitch, note.octave);
-            const adjustedX = beatX + (note.visualOffsetX || 0);
+            const realXOffset = (note.subdivisionOffset || 0) * beatWidth;
+            const adjustedX = beatX - (beatWidth / 2) + realXOffset + (beatWidth / 2) + (note.visualOffsetX || 0);
             const adjustedY = noteY + (note.visualOffsetY || 0);
+
+            if (selectedElementId === note.id) {
+              ctx.shadowColor = '#4a9eff';
+              ctx.shadowBlur = 10;
+            }
             
             // Draw ledger lines
             drawLedgerLines(ctx, adjustedX - 2, noteY, lineColor);
@@ -375,26 +419,29 @@ export const MusicStaffCanvas = function(props: MusicStaffCanvasProps) {
             // Draw stem (for quarter notes and shorter)
             if (note.duration === 'quarter' || note.duration === 'eighth' || note.duration === 'sixteenth') {
               ctx.strokeStyle = textColor;
-            ctx.lineWidth = RenderConfig.stemThickness;
-            ctx.beginPath();
-            ctx.moveTo(adjustedX + 4, adjustedY);
-            ctx.lineTo(adjustedX + 4, adjustedY - RenderConfig.stemHeight);
-            ctx.stroke();
+              ctx.lineWidth = RenderConfig.stemThickness;
+              ctx.beginPath();
+              ctx.moveTo(adjustedX + 4, adjustedY);
+              ctx.lineTo(adjustedX + 4, adjustedY - RenderConfig.stemHeight);
+              ctx.stroke();
             
-            // Draw flag
-            const flagGlyph = getFlagGlyph(note.duration, true);
-            if (flagGlyph) {
-              ctx.font = `${RenderConfig.noteFontSize}px Bravura`;
-              ctx.fillText(flagGlyph, adjustedX + 4, adjustedY - RenderConfig.stemHeight);
+              // Draw flag
+              const flagGlyph = getFlagGlyph(note.duration, true);
+              if (flagGlyph) {
+                ctx.font = `${RenderConfig.noteFontSize}px Bravura`;
+                ctx.fillText(flagGlyph, adjustedX + 4, adjustedY - RenderConfig.stemHeight);
+              }
             }
-          }
           
-          // Draw accidental
-          if (note.accidental) {
-            const accidentalGlyph = getAccidentalGlyph(note.accidental);
-            ctx.font = `${RenderConfig.noteFontSize}px Bravura`;
-            ctx.fillText(accidentalGlyph, adjustedX - 20, adjustedY);
-          }
+            // Draw accidental
+            if (note.accidental) {
+              const accidentalGlyph = getAccidentalGlyph(note.accidental);
+              ctx.font = `${RenderConfig.noteFontSize}px Bravura`;
+              ctx.fillText(accidentalGlyph, adjustedX - 20, adjustedY);
+            }
+
+            ctx.shadowColor = 'transparent';
+            ctx.shadowBlur = 0;
           } // Close the else block for note rendering
         });
       });
@@ -560,13 +607,22 @@ export const MusicStaffCanvas = function(props: MusicStaffCanvasProps) {
         const beatX = barX + (beatIndex * beatWidth) + (beatWidth / 2);
         
         for (const note of beat.notes) {
-          const noteY = getNoteY(note.pitch, note.octave);
-          const adjustedX = beatX + (note.visualOffsetX || 0);
-          const adjustedY = noteY + (note.visualOffsetY || 0);
+          const isRest = (note as any).type === 'rest';
+          const realXOffset = (note.subdivisionOffset || 0) * beatWidth;
+          const adjustedX = beatX - (beatWidth / 2) + realXOffset + (beatWidth / 2) + (note.visualOffsetX || 0);
+
+          let adjustedY = 0;
+          if (isRest) {
+            const staffTop = 40;
+            adjustedY = staffTop + 20; // Center of staff
+          } else {
+            const noteY = getNoteY(note.pitch, note.octave);
+            adjustedY = noteY + (note.visualOffsetY || 0);
+          }
           
           // Hit detection radius (approx size of note head + leeway)
           const hitRadiusX = 15;
-          const hitRadiusY = 15;
+          const hitRadiusY = isRest ? 20 : 15;
           
           if (Math.abs(x - adjustedX) <= hitRadiusX && Math.abs(y - adjustedY) <= hitRadiusY) {
             return { barIndex, beatIndex, note, adjustedX, adjustedY };
@@ -665,23 +721,29 @@ export const MusicStaffCanvas = function(props: MusicStaffCanvasProps) {
 
         // Check if we're within valid bar/beat range
         if (barIndex >= 0 && barIndex < staff.bars.length && beatIndex >= 0 && beatIndex < beatsPerBar) {
-          const durationToUse = selectedTool?.duration || selectedDuration;
+          const durationToUse = selectedTool?.duration || selectedDuration || 'quarter';
           
+          // Calculate sub-division offset (0 or 0.5 for now depending on if we click left or right half of beat cell)
+          const beatInnerX = xInBar % beatWidth;
+          const subdivisionOffset = beatInnerX > (beatWidth / 2) ? 0.5 : 0;
+
           // Check if note/rest can fit in this beat
-          if (!canFitNote(barIndex, beatIndex, durationToUse)) {
-            console.warn(`Cannot fit ${durationToUse} ${selectedTool?.type || 'note'} in beat ${beatIndex} - already full`);
-            return;
-          }
+          // Removed old rudimentary canFitNote check. 
+          // EditorPage handles the complex collision and bounds validation now.
           
-          // Handle based on selected tool type
-          if (selectedTool?.type === MusicalElementType.REST && onAddRest) {
-            // Add rest - rests don't need pitch/octave
-            onAddRest(staff.id, barIndex, beatIndex, durationToUse);
+          if (selectedRest && onAddNote) {
+            // Rests generated as pseudo-notes right now in EditorPage
+            const { pitch, octave } = getYToPitch(y);
+            onAddNote(staff.id, barIndex, beatIndex + subdivisionOffset, pitch, octave, durationToUse);
             return;
-          } else if ((selectedTool?.type === MusicalElementType.NOTE || !selectedTool) && onAddNote) {
+          } else if (onAddNote) {
             // Add note - determine pitch based on Y position
             const { pitch, octave } = getYToPitch(y);
-            onAddNote(staff.id, barIndex, beatIndex, pitch, octave, durationToUse);
+            // Pass the exact decimal beat index (e.g. 2.0 or 2.5) to EditorPage 
+            // Currently EditorPage's handleAddNote expects an integer beatIndex and sets subdivisionOffset=0.
+            // We'll pass the combination as beatIndex and let EditorPage handle the split if we patch it.
+            // For now, we will just send it securely as the decimal index.
+            onAddNote(staff.id, barIndex, beatIndex + subdivisionOffset, pitch, octave, durationToUse);
             return;
           }
         }
@@ -777,6 +839,7 @@ export const MusicStaffCanvas = function(props: MusicStaffCanvasProps) {
     if (mode === 'design') {
       const hitNoteInfo = getHitNote(x, y);
       if (hitNoteInfo) {
+        if (onSelectNote) onSelectNote({ barIndex: hitNoteInfo.barIndex, beatIndex: hitNoteInfo.beatIndex, note: hitNoteInfo.note });
         isDraggingNoteRef.current = false;
         setDraggedNote({
           barIndex: hitNoteInfo.barIndex,
@@ -786,6 +849,8 @@ export const MusicStaffCanvas = function(props: MusicStaffCanvasProps) {
           currentY: y
         });
         return;
+      } else {
+        if (onSelectNote) onSelectNote(null);
       }
     }
 
@@ -833,11 +898,14 @@ export const MusicStaffCanvas = function(props: MusicStaffCanvasProps) {
             if (barIndex >= 0 && barIndex < staff.bars.length && beatIndex >= 0 && beatIndex < beatsPerBar) {
               const { pitch, octave } = getYToPitch(y);
               
-              // Only move if it actually changed position (or pitch/octave) to prevent unnecessary updates
-              // BUT we also need to consider if it moved within the same beat but changed pitch
+              const beatInnerX = xInBar % beatWidth;
+              const subdivisionOffset = beatInnerX > (beatWidth / 2) ? 0.5 : 0;
+              const targetBeatIndex = beatIndex + subdivisionOffset;
+              
+              // Prevent move if trying to move to exact same spot identically
               if (onMoveNote && (
-                  draggedNote.barIndex !== barIndex || 
-                  draggedNote.beatIndex !== beatIndex || 
+                  draggedNote.barIndex !== barIndex ||
+                  draggedNote.beatIndex + (draggedNote.note.subdivisionOffset||0) !== targetBeatIndex ||
                   draggedNote.note.pitch !== pitch || 
                   draggedNote.note.octave !== octave)) {
                 onMoveNote(
@@ -846,7 +914,7 @@ export const MusicStaffCanvas = function(props: MusicStaffCanvasProps) {
                   draggedNote.beatIndex, 
                   draggedNote.note.id, 
                   barIndex, 
-                  beatIndex, 
+                  targetBeatIndex, 
                   pitch, 
                   octave
                 );
