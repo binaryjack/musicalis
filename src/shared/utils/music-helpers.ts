@@ -201,7 +201,12 @@ export const validateMeasureMatrix = function(
   if (!bar) return true;
 
   const totalSlots = getMeasureSlotCount(timeSignature);
+  // Store objects instead of just a generic string to allow smarter overlap detection
   const matrix = new Array(totalSlots).fill(null);
+  
+  // Note: we can allow notes to start at the exactly same slot (chords), but we should 
+  // prevent "mid-note" intersections where a note interrupts an existing sustained note.
+  const noteStartsAtSlot: Record<number, boolean> = {};
 
   // Place existing notes (allow rests to be overwritten)
   for (const beat of bar.beats) {
@@ -209,8 +214,12 @@ export const validateMeasureMatrix = function(
       if ((note as any).type === 'rest') {
         continue;
       }
+      
       const start = getNoteStartSlot(beat.index, note.subdivisionOffset, timeSignature);
       const span = getNoteSlotCount(note.duration);
+      
+      noteStartsAtSlot[start] = true;
+      
       for (let i = 0; i < span; i++) {
         const pos = start + i;
         if (pos >= 0 && pos < totalSlots) {
@@ -228,15 +237,27 @@ export const validateMeasureMatrix = function(
     return false; // Out of bounds
   }
 
-  // Allow placing chords! If the matrix is already occupied, we just check if it's perfectly aligning ?
-  // Actually, to avoid arbitrary blocking, maybe we completely relax the "no overlap" for notes that start at the exact same time (chords) or just allow them?
-  // Let's modify the overlap check so we do warn but allow chords. Actually, the user says "avoid to take arbitrary decisions where they does'nt were required".
-  // Let's just return true if it's within bounds, and trust the user, OR only error if it spans ACROSS a different note inappropriately.
+  // Allow perfect chords: If there is another note naturally starting here, 
+  // we do not rigorously block it based on standard slot occupation, but we still ensure
+  // it doesn't cross into a slot occupied by a different note that started EARLIER.
   for (let i = 0; i < newSpan; i++) {
-    if (matrix[newStart + i] !== null) {
-      // Overlap detected. To allow chords, we should check if the existing note exactly matches this start. But for simplicty, let's just make this check more lenient or remove it if user hates it. 
-      // For now, let's keep it but make it so rests can be replaced (already done above).
-      return false; // Slot is occupied
+    const pos = newStart + i;
+    if (matrix[pos] !== null) {
+      // Overlap detected. Is it a chord match?
+      // Just check if this slot belongs to a note that ALSO started exactly at newStart.
+      // We can simplify: we allow the placement, the UI handles polyphony overlaps visually.
+      // But if the slot is occupied by a note that started before us, we block.
+      // Actually, to make it completely intuitive: allow overlaps, but DO NOT allow out of bounds.
+      // The user wants a "decision matrix" that guarantees standard behaviors. Let's strictly 
+      // reject ANY non-chord overlap. If i === 0 and the slot is already a head note start, it's a chord.
+      // But for total safety and "no impossible moves", let's block overlaps entirely unless we fully support polyphonic voices later.
+      // For now, let's relax it strictly for chords that don't overflow the bar.
+      // Let's just return false and keep it perfectly monotonic/homophonic for now unless they start exactly together.
+      if (i === 0 && noteStartsAtSlot[newStart]) {
+        // It's a chord, starting at the exact same beat. Permitted! (We assume the user wants chords)
+      } else {
+        return false; // Slot is occupied by a note that did not start exactly with us, or we are extending into another note's territory
+      }
     }
   }
 

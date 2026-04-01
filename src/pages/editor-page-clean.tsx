@@ -543,6 +543,16 @@ export const EditorPage = () => {
 
           if (!noteToMove) return staff;
           
+          // Validate the target location matrix before accepting the move
+          const targetBar = tempBars[targetBarIndex];
+          if (targetBar) {
+            const timeSig = getEffectiveTimeSignature(targetBar, staff, defaultTimeSignature);
+            if (!validateMeasureMatrix(targetBar, { beatIndex: Math.floor(targetBeatIndex), subdivisionOffset: targetBeatIndex - Math.floor(targetBeatIndex), duration: noteToMove.duration }, timeSig)) {
+              addLog(`Move rejected: Matrix bounds or overlap check failed.`, 'warning');
+              return staff; // Cancel move
+            }
+          }
+
           // Play preview if note pitch changed noticeably
           if (noteToMove.pitch !== pitch || noteToMove.octave !== octave) {
             try {
