@@ -540,6 +540,7 @@ export const MusicStaffCanvas = function(props: MusicStaffCanvasProps) {
     // Draw dragged note on top
     if (draggedNote) {
       const note = draggedNote.note;
+      const isRest = (note as any).type === 'rest' && getYToPitch(draggedNote.currentY).pitch === 'R';
       const x = draggedNote.currentX;
       // Get closest pitch Y so it snaps visually to the staff vertically when dragging
       // But if it's way out, maybe just draw it at currentY? We'll snap it for better UX.
@@ -547,32 +548,41 @@ export const MusicStaffCanvas = function(props: MusicStaffCanvasProps) {
 
       ctx.save();
       ctx.globalAlpha = 0.7; // make it slightly transparent
-      drawLedgerLines(ctx, x - 2, snappedNoteY, lineColor);
+      
+      if (!isRest && getYToPitch(draggedNote.currentY).pitch !== 'R') {
+        drawLedgerLines(ctx, x - 2, snappedNoteY, lineColor);
 
-      ctx.font = `${RenderConfig.noteFontSize}px Bravura`;
-      ctx.fillStyle = textColor;
-      const noteHeadGlyph = getNoteHeadGlyph(note.duration);
-      ctx.fillText(noteHeadGlyph, x - 8, snappedNoteY);
-      
-      if (note.duration === 'quarter' || note.duration === 'eighth' || note.duration === 'sixteenth') {
-        ctx.strokeStyle = textColor;
-        ctx.lineWidth = RenderConfig.stemThickness;
-        ctx.beginPath();
-        ctx.moveTo(x + 4, snappedNoteY);
-        ctx.lineTo(x + 4, snappedNoteY - RenderConfig.stemHeight);
-        ctx.stroke();
-        
-        const flagGlyph = getFlagGlyph(note.duration, true);
-        if (flagGlyph) {
-          ctx.font = `${RenderConfig.noteFontSize}px Bravura`;
-          ctx.fillText(flagGlyph, x + 4, snappedNoteY - RenderConfig.stemHeight);
-        }
-      }
-      
-      if (note.accidental) {
-        const accidentalGlyph = getAccidentalGlyph(note.accidental);
         ctx.font = `${RenderConfig.noteFontSize}px Bravura`;
-        ctx.fillText(accidentalGlyph, x - 20, snappedNoteY);
+        ctx.fillStyle = textColor;
+        const noteHeadGlyph = getNoteHeadGlyph(note.duration);
+        ctx.fillText(noteHeadGlyph, x - 8, snappedNoteY);
+        
+        if (note.duration === 'quarter' || note.duration === 'eighth' || note.duration === 'sixteenth') {
+          ctx.strokeStyle = textColor;
+          ctx.lineWidth = RenderConfig.stemThickness;
+          ctx.beginPath();
+          ctx.moveTo(x + 4, snappedNoteY);
+          ctx.lineTo(x + 4, snappedNoteY - RenderConfig.stemHeight);
+          ctx.stroke();
+          
+          const flagGlyph = getFlagGlyph(note.duration, true);
+          if (flagGlyph) {
+            ctx.font = `${RenderConfig.noteFontSize}px Bravura`;
+            ctx.fillText(flagGlyph, x + 4, snappedNoteY - RenderConfig.stemHeight);
+          }
+        }
+        
+        if (note.accidental) {
+          const accidentalGlyph = getAccidentalGlyph(note.accidental);
+          ctx.font = `${RenderConfig.noteFontSize}px Bravura`;
+          ctx.fillText(accidentalGlyph, x - 20, snappedNoteY);
+        }
+      } else {
+        // Draw rest
+        ctx.font = `${RenderConfig.restFontSize}px Bravura`;
+        ctx.fillStyle = textColor;
+        const restGlyph = getRestGlyph(note.duration);
+        ctx.fillText(restGlyph, x - 5, 40 + 20); // Static staff Y
       }
       ctx.restore();
     }

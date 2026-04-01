@@ -546,7 +546,7 @@ export const EditorPage = () => {
           // Play preview if note pitch changed noticeably
           if (noteToMove.pitch !== pitch || noteToMove.octave !== octave) {
             try {
-              if (playback && typeof playback.playNote === 'function') {
+              if (playback && typeof playback.playNote === 'function' && pitch !== 'R') {
                 playback.playNote(`${pitch}${octave}` as MusicNote, noteToMove.duration);
               }
             } catch (e) {
@@ -554,11 +554,13 @@ export const EditorPage = () => {
             }
           }
 
-          // Update the note's position, pitch and octave
+          // Update the note's position, pitch and octave, and morph rest -> note if dragged to a pitch
           const updatedNote = { 
             ...noteToMove, 
             pitch, 
             octave, 
+            type: pitch === 'R' ? 'rest' : 'note',
+            velocity: pitch === 'R' ? 0 : 0.8,
             beatIndex: Math.floor(targetBeatIndex),
             subdivisionOffset: targetBeatIndex - Math.floor(targetBeatIndex)
           };
