@@ -1,3 +1,4 @@
+import * as Tone from 'tone';
 import { useCallback, useEffect, useState } from 'react';
 import { audioEngine, type AudioNote } from '../services/audioEngine';
 import type { MusicNote, NoteDuration } from '../types/musicTypes';
@@ -62,8 +63,11 @@ export const usePlayback = (): UsePlaybackReturn => {
   }, [isPlaying]);
 
   const play = useCallback(async () => {
+    if (Tone.context.state !== 'running') {
+      await Tone.start(); // IMMEDIATELY on click to respect browser autoplay policies
+    }
     await audioEngine.initialize();
-    audioEngine.play();
+    await audioEngine.play();
     setIsPlaying(true);
     setIsPaused(false);
   }, []);

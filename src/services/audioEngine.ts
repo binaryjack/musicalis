@@ -81,7 +81,7 @@ export const createAudioEngine = function() {
         const durationSecs = Tone.Time(timeValue).toSeconds();
         instrument.play(pitch, undefined, {
           duration: durationSecs,
-          gain: velocity / 127
+          gain: velocity > 1 ? velocity / 127 : velocity
         });
       } catch (error) {
         console.error('Failed to play note with instrument:', error);
@@ -107,19 +107,22 @@ export const createAudioEngine = function() {
     }));
     
     currentSequence = new Tone.Part((time, noteData) => {
+      console.log('Sequence playing note:', noteData.note.pitch, '@ time', time);
       if (instrument) {
         try {
           instrument.play(noteData.note.pitch, time, {
             duration: Tone.Time(noteData.note.duration).toSeconds(),
-            gain: noteData.note.velocity / 127
+            gain: noteData.note.velocity > 1 ? noteData.note.velocity / 127 : noteData.note.velocity
           });
-        } catch {
+        } catch (e) {
+          console.error("Instrument play error:", e);
           synth.triggerAttackRelease(noteData.note.pitch, noteData.note.duration, time, noteData.note.velocity);
         }
       } else {
         synth.triggerAttackRelease(noteData.note.pitch, noteData.note.duration, time, noteData.note.velocity);
       }
     }, sequence);
+    console.log('Loaded sequence with notes:', sequence.length);
     currentSequence.start(0);
   };
 
@@ -137,11 +140,13 @@ export const createAudioEngine = function() {
 
   const stop = function() {
     transport.stop();
-    transport.position = 0;
+    transport.seconds = 0;
   };
 
   const seek = function(position: number) {
-    transport.position = position;
+    if (!Number.isNaN(position)) {
+      transport.seconds = position;
+    }
   };
 
   const setTempo = function(bpm: number) {
@@ -153,7 +158,7 @@ export const createAudioEngine = function() {
   };
 
   const getCurrentTime = function(): number {
-    return Number(transport.position);
+    return transport.seconds;
   };
 
   const getIsPlaying = function(): boolean {

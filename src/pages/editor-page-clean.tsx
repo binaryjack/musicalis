@@ -333,7 +333,7 @@ export const EditorPage = () => {
               allNotes.push({
                 pitch: `${note.pitch}${note.octave}`,
                 duration: note.duration,
-                beatIndex: bar.index * bar.beats.length + beat.index
+                beatIndex: (bar.index * bar.beats.length) + beat.index + (note.subdivisionOffset || 0)
               });
             }
           });
