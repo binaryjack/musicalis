@@ -34,6 +34,7 @@ interface MusicStaffCanvasProps {
   onMoveNote?: (staffId: string, sourceBarIndex: number, sourceBeatIndex: number, noteId: string, targetBarIndex: number, targetBeatIndex: number, pitch: string, octave: number) => void;
   selectedElementId?: string | null;
   onSelectNote?: (note: { barIndex: number, beatIndex: number, note: Note } | null) => void;
+  zoom?: number;
 }
 
 const RenderConfig = {
@@ -55,7 +56,7 @@ export const MusicStaffCanvas = function(props: MusicStaffCanvasProps) {
     staff,
     mode = 'design',
     width = 1000,
-    height = 200,
+    height = 140, // Made thinner
     playheadPosition = 0,
     darkMode = false,
     selectedDuration = 'quarter',
@@ -70,6 +71,7 @@ export const MusicStaffCanvas = function(props: MusicStaffCanvasProps) {
     onMoveNote,
     selectedElementId,
     onSelectNote,
+    zoom = 1,
   } = props;
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -130,7 +132,7 @@ export const MusicStaffCanvas = function(props: MusicStaffCanvasProps) {
       return true;
     }, [staff]);
   const getNoteY = useCallback((pitch: string, octave: number): number => {
-    const staffTop = 40;
+    const staffTop = (height / 2) - (RenderConfig.staffLineSpacing * 2);
     const lineSpacing = RenderConfig.staffLineSpacing;
     
     // Treble clef: lines are E5, G5, B5, D6, F6
@@ -187,7 +189,7 @@ export const MusicStaffCanvas = function(props: MusicStaffCanvasProps) {
    * Draw ledger lines for notes outside the 5-line staff
    */
   const drawLedgerLines = useCallback((ctx: CanvasRenderingContext2D, centerX: number, noteY: number, color: string) => {
-    const staffTop = 40;
+    const staffTop = (height / 2) - (RenderConfig.staffLineSpacing * 2);
     const lineSpacing = RenderConfig.staffLineSpacing;
     const staffBottom = staffTop + lineSpacing * 4;
     const ledgerLineLength = 24;
@@ -219,7 +221,7 @@ export const MusicStaffCanvas = function(props: MusicStaffCanvasProps) {
    * Convert Y position to pitch and octave
    */
   const getYToPitch = useCallback((y: number): { pitch: string; octave: number } => {
-    const staffTop = 40;
+    const staffTop = (height / 2) - (RenderConfig.staffLineSpacing * 2);
     const lineSpacing = RenderConfig.staffLineSpacing;
     
     // Map Y positions to notes (treble clef)
@@ -283,7 +285,7 @@ export const MusicStaffCanvas = function(props: MusicStaffCanvasProps) {
     ctx.fillText(staff.name, 10, 20);
     
     // Draw the 5 staff lines
-    const staffTop = 40;
+    const staffTop = (height / 2) - (RenderConfig.staffLineSpacing * 2);
     ctx.strokeStyle = lineColor;
     ctx.lineWidth = 1;
     
@@ -582,7 +584,8 @@ export const MusicStaffCanvas = function(props: MusicStaffCanvasProps) {
         ctx.font = `${RenderConfig.restFontSize}px Bravura`;
         ctx.fillStyle = textColor;
         const restGlyph = getRestGlyph(note.duration);
-        ctx.fillText(restGlyph, x - 5, 40 + 20); // Static staff Y
+        const staffTop = (height / 2) - (RenderConfig.staffLineSpacing * 2);
+        ctx.fillText(restGlyph, x - 5, staffTop + 20); // Center staff Y
       }
       ctx.restore();
     }
@@ -623,7 +626,7 @@ export const MusicStaffCanvas = function(props: MusicStaffCanvasProps) {
 
           let adjustedY = 0;
           if (isRest) {
-            const staffTop = 40;
+            const staffTop = (height / 2) - (RenderConfig.staffLineSpacing * 2);
             adjustedY = staffTop + 20; // Center of staff
           } else {
             const noteY = getNoteY(note.pitch, note.octave);
@@ -680,7 +683,7 @@ export const MusicStaffCanvas = function(props: MusicStaffCanvasProps) {
     
     const barStartX = 130;
     const finalBarX = barStartX + (staff.bars.length * RenderConfig.barWidth);
-    const staffTop = 40;
+    const staffTop = (height / 2) - (RenderConfig.staffLineSpacing * 2);
     const barHeight = RenderConfig.staffLineSpacing * 4;
     
     // Calculate button positions (same as in drawStaff)
@@ -780,7 +783,7 @@ export const MusicStaffCanvas = function(props: MusicStaffCanvasProps) {
     
     const barStartX = 130;
     const finalBarX = barStartX + (staff.bars.length * RenderConfig.barWidth);
-    const staffTop = 40;
+    const staffTop = (height / 2) - (RenderConfig.staffLineSpacing * 2);
     const barHeight = RenderConfig.staffLineSpacing * 4;
     
     // Calculate button positions
@@ -866,7 +869,7 @@ export const MusicStaffCanvas = function(props: MusicStaffCanvasProps) {
 
     const barStartX = 130;
     const finalBarX = barStartX + (staff.bars.length * RenderConfig.barWidth);
-    const staffTop = 40;
+    const staffTop = (height / 2) - (RenderConfig.staffLineSpacing * 2);
     const barHeight = RenderConfig.staffLineSpacing * 4;
 
     // Check if mousedown on playhead area (staff region)
@@ -885,7 +888,7 @@ export const MusicStaffCanvas = function(props: MusicStaffCanvasProps) {
         const x = event.clientX - rect.left;
         const y = event.clientY - rect.top;
 
-        const staffTop = 40;
+        const staffTop = (height / 2) - (RenderConfig.staffLineSpacing * 2);
         const barHeight = RenderConfig.staffLineSpacing * 4;
         
         // If dragged outside staff, treat as remove target or just ignore? User requested "dragging them out" to remove.

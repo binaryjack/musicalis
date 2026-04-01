@@ -38,6 +38,7 @@ export const EditorPage = () => {
   const [videoResolution, setVideoResolution] = useState<string>('1080p');
   const [audioQuality, setAudioQuality] = useState<string>('high');
   const [cursorPosition, setCursorPosition] = useState<number>(0);
+  const [zoom, setZoom] = useState<number>(1);
   const defaultTimeSignature = parseTimeSignature('4/4');
   const [staffs, setStaffs] = useState<Staff[]>([
     initializeStaff({
