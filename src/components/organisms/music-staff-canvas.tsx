@@ -656,8 +656,8 @@ export const MusicStaffCanvas = function(props: MusicStaffCanvasProps) {
     if (!canvas) return;
     
     const rect = canvas.getBoundingClientRect();
-    const x = event.clientX - rect.left;
-    const y = event.clientY - rect.top;
+    const x = (event.clientX - rect.left) / zoom;
+    const y = (event.clientY - rect.top) / zoom;
     
     const hitNoteInfo = getHitNote(x, y);
     if (hitNoteInfo && onRemoveNote) {
@@ -678,8 +678,8 @@ export const MusicStaffCanvas = function(props: MusicStaffCanvasProps) {
     if (!canvas) return;
     
     const rect = canvas.getBoundingClientRect();
-    const x = event.clientX - rect.left;
-    const y = event.clientY - rect.top;
+    const x = (event.clientX - rect.left) / zoom;
+    const y = (event.clientY - rect.top) / zoom;
     
     const barStartX = 130;
     const finalBarX = barStartX + (staff.bars.length * RenderConfig.barWidth);
@@ -778,8 +778,8 @@ export const MusicStaffCanvas = function(props: MusicStaffCanvasProps) {
     if (!canvas) return;
     
     const rect = canvas.getBoundingClientRect();
-    const x = event.clientX - rect.left;
-    const y = event.clientY - rect.top;
+    const x = (event.clientX - rect.left) / zoom;
+    const y = (event.clientY - rect.top) / zoom;
     
     const barStartX = 130;
     const finalBarX = barStartX + (staff.bars.length * RenderConfig.barWidth);
@@ -846,8 +846,8 @@ export const MusicStaffCanvas = function(props: MusicStaffCanvasProps) {
     if (!canvas) return;
     
     const rect = canvas.getBoundingClientRect();
-    const x = event.clientX - rect.left;
-    const y = event.clientY - rect.top;
+    const x = (event.clientX - rect.left) / zoom;
+    const y = (event.clientY - rect.top) / zoom;
     
     if (mode === 'design') {
       const hitNoteInfo = getHitNote(x, y);
@@ -885,11 +885,8 @@ export const MusicStaffCanvas = function(props: MusicStaffCanvasProps) {
       const canvas = canvasRef.current;
       if (canvas) {
         const rect = canvas.getBoundingClientRect();
-        const x = event.clientX - rect.left;
-        const y = event.clientY - rect.top;
-
-        const staffTop = (height / 2) - (RenderConfig.staffLineSpacing * 2);
-        const barHeight = RenderConfig.staffLineSpacing * 4;
+          const x = (event.clientX - rect.left) / zoom;
+          const y = (event.clientY - rect.top) / zoom;
         
         // If dragged outside staff, treat as remove target or just ignore? User requested "dragging them out" to remove.
         if (y < staffTop - 60 || y > staffTop + barHeight + 60) {
@@ -961,7 +958,12 @@ export const MusicStaffCanvas = function(props: MusicStaffCanvasProps) {
       onMouseMove={handleMouseMove}
       onMouseUp={handleMouseUp}
       onMouseLeave={handleMouseLeave}
-      style={{ cursor: draggedNote ? 'grabbing' : (hoveredButton ? 'pointer' : isDraggingPlayhead ? 'grabbing' : 'default'), display: 'block' }}
+      style={{ 
+        cursor: draggedNote ? 'grabbing' : (hoveredButton ? 'pointer' : isDraggingPlayhead ? 'grabbing' : 'default'), 
+        display: 'block',
+        transform: `scale(${zoom})`,
+        transformOrigin: 'top left'
+      }}
     />
   );
 };
