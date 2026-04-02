@@ -9,44 +9,147 @@ interface BTState {
 
 const DEFAULT_TREE: BTTreeDef = {
   id: 'default',
-  name: 'Default Behavior',
-  description: 'Built-in staff interaction behavior tree',
+  name: 'Staff Interaction',
+  description: 'Hover → Click-place → Drag → Ctrl+Sustain staff interaction behavior tree',
   root: {
     id: 'root',
     type: 'selector',
     label: 'Root',
     children: [
+
+      // ── 1. Ctrl+Drag Sustain (highest priority) ──────────────────────────────
+      // Requires Ctrl held + mouse down. Keeps RUNNING via sustain.begin while
+      // held; on release frame the mouse.isUp branch commits the beam note.
       {
-        id: 'seq-add-note',
+        id: 'seq-sustain',
         type: 'sequence',
-        label: 'Add Note',
+        label: 'Ctrl+Sustain Beam',
         children: [
-          { id: 'c-design-1',  type: 'condition', label: 'Is Design Mode',  conditionKey: 'mode.isDesign' },
-          { id: 'c-mouse-1',   type: 'condition', label: 'Mouse Pressed',   conditionKey: 'mouse.isPressed' },
-          { id: 'c-staff-1',   type: 'condition', label: 'Staff Selected',  conditionKey: 'staff.isSelected' },
-          { id: 'a-note-add',  type: 'action',    label: 'Add Note',        actionKey: 'note.add', params: { duration: 'quarter' } },
+          { id: 'c-sus-design',   type: 'condition', label: 'Is Design Mode',    conditionKey: 'mode.isDesign' },
+          { id: 'c-sus-ctrl',     type: 'condition', label: 'Ctrl Is Down',      conditionKey: 'mouse.isCtrlDown' },
+          { id: 'c-sus-mouse',    type: 'condition', label: 'Mouse Is Down',     conditionKey: 'mouse.isDown' },
+          { id: 'a-sus-begin',    type: 'action',    label: 'Begin Sustain',     actionKey: 'sustain.begin' },
+          { id: 'a-sus-range',    type: 'action',    label: 'Highlight Range',   actionKey: 'sustain.highlightRange' },
+        ],
+      },
+      // Commit sustain on the release frame (separate branch, same priority group)
+      {
+        id: 'seq-sustain-commit',
+        type: 'sequence',
+        label: 'Commit Sustain',
+        children: [
+          { id: 'c-sus-active',   type: 'condition', label: 'Sustain Active',    conditionKey: 'sustain.isActive' },
+          { id: 'c-sus-up',       type: 'condition', label: 'Mouse Released',    conditionKey: 'mouse.isUp' },
+          { id: 'a-sus-commit',   type: 'action',    label: 'Commit Sustain',    actionKey: 'sustain.commit' },
+        ],
+      },
+
+      // ── 2. Note Drag ─────────────────────────────────────────────────────────
+      // While dragging: renders ghost + highlights target. RUNNING state held
+      // via note.beginDrag. Release frame: commit or cancel.
+      {
+        id: 'seq-drag-update',
+        type: 'sequence',
+        label: 'Note Drag (update)',
+        children: [
+          { id: 'c-drag-sel',     type: 'condition', label: 'Note Selected',     conditionKey: 'note.isSelected' },
+          { id: 'c-drag-down',    type: 'condition', label: 'Mouse Is Down',     conditionKey: 'mouse.isDown' },
+          // note.beginDrag sets isDragging=true and returns RUNNING → holds the sequence
+          { id: 'a-drag-begin',   type: 'action',    label: 'Begin Drag',        actionKey: 'note.beginDrag' },
+          { id: 'a-drag-ghost',   type: 'action',    label: 'Ghost Note',        actionKey: 'note.renderGhost' },
+          { id: 'a-drag-hl',      type: 'action',    label: 'Highlight Target',  actionKey: 'subdivision.highlight' },
         ],
       },
       {
-        id: 'seq-remove-note',
+        id: 'seq-drag-commit',
         type: 'sequence',
-        label: 'Remove Note',
+        label: 'Note Drag (commit)',
         children: [
-          { id: 'c-design-2',    type: 'condition', label: 'Is Design Mode',  conditionKey: 'mode.isDesign' },
-          { id: 'c-note-sel',    type: 'condition', label: 'Note Selected',   conditionKey: 'note.isSelected' },
-          { id: 'a-note-remove', type: 'action',    label: 'Remove Note',     actionKey: 'note.remove' },
+          { id: 'c-drag-active',  type: 'condition', label: 'Is Dragging',       conditionKey: 'note.isDragging' },
+          { id: 'c-drag-up',      type: 'condition', label: 'Mouse Released',    conditionKey: 'mouse.isUp' },
+          // Guard: only commit when target cell is not already occupied by a note
+          {
+            id: 'd-drag-guard',
+            type: 'decorator',
+            label: 'No Note At Target',
+            decoratorType: 'invert',
+            children: [
+              { id: 'c-drag-occupied', type: 'condition', label: 'Position Has Note', conditionKey: 'position.hasNote' },
+            ],
+          },
+          { id: 'a-drag-rest-del', type: 'action',   label: 'Delete Rest',       actionKey: 'rest.deleteAtPosition' },
+          { id: 'a-drag-commit',   type: 'action',   label: 'Commit Drag',       actionKey: 'note.commitDrag' },
+          { id: 'a-drag-sound',    type: 'action',   label: 'Play Sound',        actionKey: 'note.playSound' },
         ],
       },
+      {
+        id: 'seq-drag-cancel',
+        type: 'sequence',
+        label: 'Note Drag (cancel)',
+        children: [
+          { id: 'c-dragc-active', type: 'condition', label: 'Is Dragging',       conditionKey: 'note.isDragging' },
+          { id: 'c-dragc-up',     type: 'condition', label: 'Mouse Released',    conditionKey: 'mouse.isUp' },
+          // Reaches here only when the guard above failed (position occupied)
+          { id: 'a-drag-cancel',  type: 'action',    label: 'Cancel Drag',       actionKey: 'note.cancelDrag' },
+        ],
+      },
+
+      // ── 3. Click to Place Note ────────────────────────────────────────────────
+      // Single-frame press on an allowed subdivision. Guard prevents double-placement.
+      {
+        id: 'seq-click-place',
+        type: 'sequence',
+        label: 'Click-Place Note',
+        children: [
+          { id: 'c-cp-design',    type: 'condition', label: 'Is Design Mode',    conditionKey: 'mode.isDesign' },
+          { id: 'c-cp-pressed',   type: 'condition', label: 'Mouse Pressed',     conditionKey: 'mouse.isPressed' },
+          { id: 'c-cp-subdiv',    type: 'condition', label: 'Subdivision Hovered', conditionKey: 'subdivision.isHovered' },
+          { id: 'c-cp-allowed',   type: 'condition', label: 'Subdivision Allowed', conditionKey: 'subdivision.isAllowed' },
+          // Guard: fail if a NOTE already exists there (rest is ok — deleted below)
+          {
+            id: 'd-cp-guard',
+            type: 'decorator',
+            label: 'No Note Already',
+            decoratorType: 'invert',
+            children: [
+              { id: 'c-cp-hasnote', type: 'condition', label: 'Position Has Note', conditionKey: 'position.hasNote' },
+            ],
+          },
+          // If a rest is there, delete it first
+          { id: 'a-cp-delrest',   type: 'action',    label: 'Delete Rest',       actionKey: 'rest.deleteAtPosition' },
+          { id: 'a-cp-place',     type: 'action',    label: 'Place Note',        actionKey: 'note.add', params: { duration: 'quarter' } },
+          { id: 'a-cp-sound',     type: 'action',    label: 'Play Sound',        actionKey: 'note.playSound' },
+        ],
+      },
+
+      // ── 4. Hover Ghost (lowest priority — always runs when nothing else matches)
+      // Shows a ghost note preview + highlights the hovered subdivision.
+      {
+        id: 'seq-hover',
+        type: 'sequence',
+        label: 'Hover Ghost',
+        children: [
+          { id: 'c-hov-design',   type: 'condition', label: 'Is Design Mode',    conditionKey: 'mode.isDesign' },
+          { id: 'c-hov-subdiv',   type: 'condition', label: 'Subdivision Hovered', conditionKey: 'subdivision.isHovered' },
+          { id: 'c-hov-allowed',  type: 'condition', label: 'Subdivision Allowed', conditionKey: 'subdivision.isAllowed' },
+          { id: 'c-hov-note',     type: 'condition', label: 'Note Selected',     conditionKey: 'note.isSelected' },
+          { id: 'a-hov-hl',       type: 'action',    label: 'Highlight Cell',    actionKey: 'subdivision.highlight' },
+          { id: 'a-hov-ghost',    type: 'action',    label: 'Ghost Note',        actionKey: 'note.renderGhost' },
+        ],
+      },
+
+      // ── 5. Drag Playhead (playback mode) ────────────────────────────────────
       {
         id: 'seq-playhead',
         type: 'sequence',
         label: 'Drag Playhead',
         children: [
-          { id: 'c-playback',    type: 'condition', label: 'Is Playback Mode', conditionKey: 'mode.isPlayback' },
-          { id: 'c-mouse-down',  type: 'condition', label: 'Mouse Down',       conditionKey: 'mouse.isDown' },
-          { id: 'a-playhead',    type: 'action',    label: 'Set Playhead',     actionKey: 'playhead.set' },
+          { id: 'c-ph-playback',  type: 'condition', label: 'Is Playback Mode',  conditionKey: 'mode.isPlayback' },
+          { id: 'c-ph-down',      type: 'condition', label: 'Mouse Down',        conditionKey: 'mouse.isDown' },
+          { id: 'a-ph-set',       type: 'action',    label: 'Set Playhead',      actionKey: 'playhead.set' },
         ],
       },
+
     ],
   },
   createdAt: '2026-04-02T00:00:00.000Z',

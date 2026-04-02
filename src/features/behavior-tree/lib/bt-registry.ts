@@ -56,6 +56,57 @@ export const defaultRegistry: BTRegistry = {
       description: 'True when cursor position is >= 0',
       fn: (ctx) => ctx.cursorPosition >= 0,
     },
+
+    // ── Interaction-layer conditions ───────────────────────────────────────
+
+    'mouse.isCtrlDown': {
+      key: 'mouse.isCtrlDown',
+      label: 'Ctrl Is Down',
+      description: 'True while Ctrl key is held with the mouse',
+      fn: (ctx) => ctx.mouse.isCtrlDown,
+    },
+    'mouse.isUp': {
+      key: 'mouse.isUp',
+      label: 'Mouse Released',
+      description: 'True on the single frame a mouse button is released',
+      fn: (ctx) => ctx.mouse.isUp,
+    },
+    'subdivision.isHovered': {
+      key: 'subdivision.isHovered',
+      label: 'Subdivision Hovered',
+      description: 'True when the cursor is over a specific staff subdivision cell',
+      fn: (ctx) => ctx.hoveredSubdivision !== null,
+    },
+    'subdivision.isAllowed': {
+      key: 'subdivision.isAllowed',
+      label: 'Subdivision Is Allowed',
+      description: 'True when the hovered subdivision is a legal target for the selected duration',
+      fn: (ctx) => ctx.hoveredSubdivision?.isAllowed ?? false,
+    },
+    'position.hasNote': {
+      key: 'position.hasNote',
+      label: 'Position Has Note',
+      description: 'True when a note already occupies the hovered subdivision (guard: prevents double-placement)',
+      fn: (ctx) => ctx.hoveredSubdivision?.hasNote ?? false,
+    },
+    'position.hasRest': {
+      key: 'position.hasRest',
+      label: 'Position Has Rest',
+      description: 'True when a rest occupies the hovered subdivision',
+      fn: (ctx) => ctx.hoveredSubdivision?.hasRest ?? false,
+    },
+    'note.isDragging': {
+      key: 'note.isDragging',
+      label: 'Note Is Dragging',
+      description: 'True while a note drag operation is in progress',
+      fn: (ctx) => ctx.isDragging,
+    },
+    'sustain.isActive': {
+      key: 'sustain.isActive',
+      label: 'Sustain Mode Active',
+      description: 'True while a Ctrl+drag beam/sustain operation is in progress',
+      fn: (ctx) => ctx.isSustainMode,
+    },
   },
 
   actions: {
@@ -119,6 +170,69 @@ export const defaultRegistry: BTRegistry = {
       key: 'playhead.set',
       label: 'Set Playhead',
       description: 'Move the playhead to the cursor position',
+      fn: () => NODE_STATUS.SUCCESS,
+    },
+
+    // ── Interaction-layer actions ──────────────────────────────────────────
+
+    'note.playSound': {
+      key: 'note.playSound',
+      label: 'Play Note Sound',
+      description: 'Trigger audio playback for the placed / moved note',
+      fn: () => NODE_STATUS.SUCCESS,
+    },
+    'rest.deleteAtPosition': {
+      key: 'rest.deleteAtPosition',
+      label: 'Delete Rest At Position',
+      description: 'Remove a rest at the hovered subdivision to make room for a note (no-op if no rest)',
+      fn: () => NODE_STATUS.SUCCESS,
+    },
+    'subdivision.highlight': {
+      key: 'subdivision.highlight',
+      label: 'Highlight Subdivision',
+      description: 'Visually highlight the hovered subdivision cell as a valid drop target',
+      fn: () => NODE_STATUS.SUCCESS,
+    },
+    'note.renderGhost': {
+      key: 'note.renderGhost',
+      label: 'Render Ghost Note',
+      description: 'Render a translucent preview of the selected note at the hovered subdivision',
+      fn: () => NODE_STATUS.SUCCESS,
+    },
+    'note.beginDrag': {
+      key: 'note.beginDrag',
+      label: 'Begin Note Drag',
+      description: 'Start a note drag — marks isDragging and stores dragSourceNoteId. Returns RUNNING until released.',
+      fn: () => NODE_STATUS.RUNNING,
+    },
+    'note.commitDrag': {
+      key: 'note.commitDrag',
+      label: 'Commit Note Drag',
+      description: 'Drop the dragged note onto the hovered subdivision (replaces rest if present, cancels if occupied)',
+      fn: () => NODE_STATUS.SUCCESS,
+    },
+    'note.cancelDrag': {
+      key: 'note.cancelDrag',
+      label: 'Cancel Note Drag',
+      description: 'Abort the current drag and restore the note to its original position',
+      fn: () => NODE_STATUS.SUCCESS,
+    },
+    'sustain.begin': {
+      key: 'sustain.begin',
+      label: 'Begin Sustain Mode',
+      description: 'Start a Ctrl+drag beam/sustain — sets isSustainMode. Returns RUNNING while held.',
+      fn: () => NODE_STATUS.RUNNING,
+    },
+    'sustain.highlightRange': {
+      key: 'sustain.highlightRange',
+      label: 'Highlight Sustain Range',
+      description: 'Highlight the maximum allowed subdivision range for the ongoing sustain drag',
+      fn: () => NODE_STATUS.SUCCESS,
+    },
+    'sustain.commit': {
+      key: 'sustain.commit',
+      label: 'Commit Sustain',
+      description: 'On mouse-up: replace covered notes with beamed/sustained note. Cancels if off-staff.',
       fn: () => NODE_STATUS.SUCCESS,
     },
   },
