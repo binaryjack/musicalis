@@ -7,7 +7,7 @@ import { TimeSignatureControl } from '../components/atoms/time-signature-control
 import type { MenuItem } from '../components/molecules/menu-bar';
 import { MenuBar } from '../components/molecules/menu-bar';
 import { TransportBar } from '../components/molecules/transport-bar';
-import { MusicStaffCanvas } from '../components/organisms/music-staff-canvas';
+import { MusicStaffCanvas } from '../widgets/music-staff-canvas';
 import { useEditor } from '../features/editor/hooks/useEditor';
 import { usePlayback } from '../hooks/usePlayback';
 import { useProject } from '../hooks/useProject';
