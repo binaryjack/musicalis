@@ -1,25 +1,7 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
-import type { PianoStaff } from '../../types/musicTypes';
-import type { ProjectData } from '../../services/projectService';
-import type { EditorMode } from '../../types/enums';
-
-export interface MultiStaffCanvasProps {
-  project?: ProjectData | null;
-  staffs: PianoStaff[];
-  width?: number;
-  height?: number;
-  playheadPosition?: number;
-  mode?: EditorMode;
-  selectedStaffId?: string;
-  darkMode?: boolean;
-  onStaffClick?: (staffId: string, position: { x: number; y: number; pitch?: string; beat?: number }) => void;
-  onNoteClick?: (noteId: string, staffId: string) => void;
-  onNoteDelete?: (noteId: string, staffId: string) => void;
-  onNoteMove?: (noteId: string, staffId: string, newPosition: number) => void;
-  onPlayheadDrag?: (newPosition: number) => void;
-  onAddBar?: (staffId: string, afterBarIndex: number) => void;
-  onRemoveBar?: (staffId: string, barIndex: number) => void;
-}
+import { useEffect, useRef, useState } from 'react';
+import { Renderer, Stave, StaveNote, Voice, Formatter } from 'vexflow';
+import { useScrollPhysics } from '../hooks/use-scroll-physics';
+import type { MultiStaffCanvasProps } from '../model/types';
 
 export const MultiStaffCanvas = function(props: MultiStaffCanvasProps) {
   const {
@@ -51,34 +33,7 @@ export const MultiStaffCanvas = function(props: MultiStaffCanvasProps) {
   const fixedMeasureWidth = 180; // Fixed width per measure
   const staffOriginX = 10;
   
-  const calculatePlayheadScrollState = useCallback(() => {
-    const contentWidth = (width || 800) * 2; // Assuming 2x width for scrolling
-    const viewportWidth = width || 800;
-    const centerOffset = viewportWidth / 2;
-    
-    let scrollState: 'free' | 'center-lock' | 'end-boundary';
-    let scrollPosition: number;
-    let visualPlayheadX: number;
-    
-    if (playheadX < centerOffset) {
-      // STATE 1: Free Movement
-      scrollState = 'free';
-      scrollPosition = 0;
-      visualPlayheadX = playheadX;
-    } else if (playheadX <= (contentWidth - centerOffset)) {
-      // STATE 2: Center-Lock
-      scrollState = 'center-lock';
-      scrollPosition = playheadX - centerOffset;
-      visualPlayheadX = centerOffset;
-    } else {
-      // STATE 3: End Boundary
-      scrollState = 'end-boundary';
-      scrollPosition = contentWidth - viewportWidth;
-      visualPlayheadX = playheadX - scrollPosition;
-    }
-    
-    return { scrollState, scrollPosition, visualPlayheadX };
-  }, [playheadX, width]);
+  const { calculatePlayheadScrollState } = useScrollPhysics(width || 800, playheadX);
   
   useEffect(() => {
     if (!containerRef.current || !staffs.length) return;
@@ -147,7 +102,7 @@ export const MultiStaffCanvas = function(props: MultiStaffCanvasProps) {
         measureStave.setContext(context).draw();
 
         const notesInMeasure = staff.notes
-          .filter(note => (note.barNumber || 1) === (measureIndex + 1))
+          .filter(note => ((note as any).barNumber || (note as any).measureIndex || 1) === (measureIndex + 1))
           .filter(note => !note.colorId || staff.colorMapping.colors.find(c => c.id === note.colorId));
 
         if (notesInMeasure.length > 0) {

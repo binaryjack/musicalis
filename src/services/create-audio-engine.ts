@@ -2,13 +2,14 @@ import * as Tone from 'tone';
 import Soundfont from 'soundfont-player';
 import type { MusicNote, NoteDuration } from '../types/musicTypes';
 import { isNote, getDurationInMs } from '../shared/utils/musical-elements';
-import type { MusicalNote, AudioElement } from '../types/models/note.model';
+import type { MusicalNote } from '../types/models/note.model';
 
 export interface AudioNote {
-  pitch: MusicNote;
-  duration: NoteDuration;
+  pitch?: MusicNote;
+  duration: NoteDuration | number;
   startTime: number;
   velocity?: number;
+  type?: 'note' | 'rest';
 }
 
 export const createAudioEngine = function() {
@@ -67,7 +68,7 @@ export const createAudioEngine = function() {
     return durations[duration] ?? '4n';
   };
 
-  const convertMusicalElementToAudio = function(element: MusicalNote, startTime: number, bpm: number): AudioElement {
+  const convertMusicalElementToAudio = function(element: MusicalNote, startTime: number, bpm: number): AudioNote {
     if (!isNote(element)) {
       return {
         type: 'rest' as const,
@@ -129,17 +130,19 @@ export const createAudioEngine = function() {
       currentSequence.dispose();
     }
     
-    const sequence = notes.map(note => ({
+    const sequence = notes
+      .filter(note => note.pitch && note.type !== 'rest')
+      .map(note => ({
       time: note.startTime,
       note: {
-        pitch: convertNoteToPitch(note.pitch),
-        duration: convertDurationToTime(note.duration),
+        pitch: convertNoteToPitch(note.pitch as MusicNote),
+        duration: typeof note.duration === 'number' ? (note.duration / 1000) : convertDurationToTime(note.duration),
         velocity: note.velocity ?? 0.8
       }
     }));
     
-    currentSequence = new Tone.Part((time, note) => {
-      synth.triggerAttackRelease(note.pitch, note.duration, time, note.velocity);
+    currentSequence = new Tone.Part((time, event) => {
+      synth.triggerAttackRelease(event.note.pitch, event.note.duration, time, event.note.velocity);
     }, sequence);
   };
 

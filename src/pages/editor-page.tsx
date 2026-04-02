@@ -8,7 +8,7 @@ import { VelocityControl } from '../components/molecules/velocity-control';
 import { BarControls } from '../components/molecules/bar-controls';
 // Advanced Components
 import { ResponsiveLayout } from '../components/organisms/responsive-layout';
-import { MultiStaffCanvas } from '../components/organisms/multi-staff-canvas';
+import { MultiStaffCanvas } from '../widgets/multi-staff-canvas/ui/multi-staff-canvas';
 import { MemoryMonitor } from '../components/organisms/memory-monitor';
 import { VideoExportControls } from '../components/organisms/video-export-controls';
 import { BarManagement } from '../components/organisms/bar-management';
@@ -55,7 +55,6 @@ export const EditorPage = ({ projectId }: EditorPageProps) => {
       instrument: 'piano'
     }
   ]);
-  const [selectedStaffIndex, setSelectedStaffIndex] = useState(0);
   const [showVideoExport, setShowVideoExport] = useState(false);
   const [showBarManagement, setShowBarManagement] = useState(false);
   const [showColorMapping, setShowColorMapping] = useState(false);
@@ -162,20 +161,15 @@ export const EditorPage = ({ projectId }: EditorPageProps) => {
         });
         console.log('Adding rest:', newRest);
         
-        // Add rest to project (assuming project supports rests)
-        if (project.addRest) {
-          project.addRest(newRest);
-        } else {
-          // Fallback: add as a note with no pitch (silent)
-          const silentNote = {
-            pitch: null,
-            duration: selectedTool.duration,
-            position: position.beat,
-            velocity: 0,
-            isRest: true
-          };
-          project.addNote(silentNote as any);
-        }
+        // Fallback: add as a note with no pitch (silent)
+        const silentNote = {
+          pitch: null,
+          duration: selectedTool.duration,
+          position: position.beat,
+          velocity: 0,
+          isRest: true
+        };
+        project.addNote(silentNote as any);
       }
     }
   };
@@ -391,9 +385,8 @@ export const EditorPage = ({ projectId }: EditorPageProps) => {
               project={project.currentProject}
               mode={mode}
               playheadPosition={0}
-              onStaffClick={isDesignMode ? (staffId: string, position: StaffClickPosition) => {
+              onStaffClick={isDesignMode ? (staffId: string, position: any) => {
                 console.log('MultiStaffCanvas click:', staffId, position, 'Design mode:', isDesignMode);
-                setSelectedStaffIndex(0); // Mock implementation
                 handleStaffClick(position);
               } : undefined}
               onNoteDelete={isDesignMode ? (noteId: string) => {
@@ -423,7 +416,7 @@ export const EditorPage = ({ projectId }: EditorPageProps) => {
             zIndex: 1000
           }}>
             <VideoExportControls
-              onExportStart={(options: VideoExportOptions) => {
+              onExportStart={(_options: VideoExportOptions) => {
                 setVideoExporting(true);
                 setExportProgress(0);
                 // Simulate export process
@@ -497,27 +490,13 @@ export const EditorPage = ({ projectId }: EditorPageProps) => {
                   id: project.currentProject?.id || 'temp',
                   title: project.currentProject?.name || 'Untitled',
                   bpm: project.currentProject?.tempo || 120,
-                  timeSignature: { numerator: 4, denominator: 4 },
-                  keySignature: { key: 'C', mode: 'major', sharps: 0, flats: 0 },
-                  bars: [{
-                    id: 'bar-1',
-                    number: 1,
-                    timeSignature: '4/4',
-                    keySignature: 'C major',
-                    duration: 240,
-                    notes: notes.map((note, index) => ({
-                      id: `note-${index}`,
-                      pitch: note.pitch,
-                      duration: note.duration,
-                      position: note.position,
-                      velocity: note.velocity || 0.5,
-                      staffId: 'staff-1',
-                      barNumber: 1
-                    })),
-                    isEmpty: notes.length === 0,
-                    isRepeatable: false
+                timeSignature: { beatsPerMeasure: 4, beatValue: 4, display: '4/4' },
+                keySignature: { key: 'C', mode: 'major', sharps: 0, flats: 0 },
+                bars: [{
+                    index: 0,
+                    beats: []
                   }]
-                }}
+                } as any}
                 onBarsChange={(bars) => {
                   console.log('Bars changed:', bars);
                 }}
@@ -589,15 +568,7 @@ export const EditorPage = ({ projectId }: EditorPageProps) => {
                 onMappingChange={(mapping) => {
                   console.log('Color mapping changed:', mapping);
                 }}
-                availablePresets={[
-                  {
-                    id: 'teaching-basic',
-                    name: 'Teaching Basic',
-                    description: 'Simple color coding for beginners',
-                    rules: []
-                  }
-                ]}
-                onPresetSelect={(preset) => {
+                onPresetLoad={(preset) => {
                   console.log('Preset selected:', preset);
                 }}
               />

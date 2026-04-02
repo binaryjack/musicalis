@@ -137,7 +137,7 @@ describe('compose-workflow', () => {
       // Verify project saved in localStorage
       cy.window().then((win) => {
         const savedProjects = JSON.parse(win.localStorage.getItem('projects') || '[]');
-        expect(savedProjects).to.have.length.greaterThan(0);
+        cy.wrap(savedProjects).should('have.length.greaterThan', 0);
         
         interface SavedProject {
           name: string;

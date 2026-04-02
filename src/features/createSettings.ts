@@ -14,6 +14,7 @@ type StorageAdapter = {
 };
 
 export const createSettings = function(
+  this: any,
   storage: StorageAdapter,
   initialState: SettingsState
 ) {

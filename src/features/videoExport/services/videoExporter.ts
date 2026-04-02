@@ -1,15 +1,7 @@
 import type { Project } from '../../../types/models';
 import type { ExportFormat, ExportQuality } from '../../../types/enums/export.enums';
 
-// Simplified dispatch actions to avoid slice.actions syntax issues
-const setStatus = (status: string) => ({ type: 'videoExport/setStatus', payload: status });
-const setIsReady = (ready: boolean) => ({ type: 'videoExport/setIsReady', payload: ready });
-const setError = (error: string) => ({ type: 'videoExport/setError', payload: error });
-const startExport = (config: { projectId: string; format: ExportFormat; quality: ExportQuality; outputFileName: string }) => ({ type: 'videoExport/startExport', payload: config });
-const setProgress = (progress: number) => ({ type: 'videoExport/setProgress', payload: progress });
-const completeExport = () => ({ type: 'videoExport/completeExport' });
-const cancelExport = () => ({ type: 'videoExport/cancelExport' });
-const clearError = () => ({ type: 'videoExport/clearError' });
+// Simplified dispatch actions removed as they were unused
 
 interface FFmpegWorker {
   load(): Promise<void>;

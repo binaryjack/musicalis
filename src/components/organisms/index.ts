@@ -6,7 +6,6 @@ export * from "./staff-canvas";
 export * from "./MusicalPalette";
 
 // Advanced Multi-Staff System
-export * from "./multi-staff-canvas";
 export * from "./memory-monitor";
 export * from "./staff-manager";
 

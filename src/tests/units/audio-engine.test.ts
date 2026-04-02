@@ -15,8 +15,7 @@ interface AudioEngineInterface {
 export const createAudioEngine = function(): AudioEngineInterface {
   let currentTime = 0;
   let isPlaying = false;
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  let loadedNotes: { pitch: MusicNote; duration: NoteDuration }[] = [];
+  // let loadedNotes ... removed as it is unused
 
   const engine = {
     getCurrentTime: function() {
@@ -27,8 +26,8 @@ export const createAudioEngine = function(): AudioEngineInterface {
       return isPlaying;
     },
 
-    loadNotes: function(notes: { pitch: MusicNote; duration: NoteDuration }[]) {
-      loadedNotes = notes;
+    loadNotes: function(_notes: { pitch: MusicNote; duration: NoteDuration }[]) {
+      // do nothing
     },
 
     play: function() {

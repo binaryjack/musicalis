@@ -445,9 +445,9 @@ describe('project-management', () => {
         cy.get('[data-testid="audio-quality-selector"]').select('draft');
         
         // Verify memory usage decreases
-        cy.get('[data-testid="memory-usage-bar"]').should(($newBar) => {
+        cy.get('[data-testid="memory-usage-bar"]').then(($newBar) => {
           const lowUsage = $newBar.attr('data-usage') || '0';
-          expect(parseInt(lowUsage)).to.be.lessThan(parseInt(highUsage || '100'));
+          cy.wrap(parseInt(lowUsage)).should('be.lessThan', parseInt(highUsage || '100'));
         });
       });
     });

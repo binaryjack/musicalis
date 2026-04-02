@@ -456,7 +456,7 @@ describe('audio-visual-sync', () => {
       // Verify playhead moved to clicked position
       cy.get('[data-testid="playhead"]').then(($playhead) => {
         const leftPosition = parseInt($playhead.css('left'), 10);
-        expect(leftPosition).to.be.approximately(400, 50);
+        cy.wrap(leftPosition).should('be.closeTo', 400, 50);
       });
     });
 

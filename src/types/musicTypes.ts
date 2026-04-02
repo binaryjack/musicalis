@@ -236,13 +236,7 @@ export interface MusicComposition {
   bpm: number;
   timeSignature: TimeSignature;
   keySignature: { key: string; mode: string; sharps: number; flats: number };
-}
-
-// Legacy Bar interface removed - using new Bar interface above
-
-export interface BarMeasure extends Bar {
-  duration?: number;
-  isEmpty?: boolean;
+  bars?: Bar[];
   isRepeatable?: boolean;
 }
 

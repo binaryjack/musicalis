@@ -15,6 +15,7 @@ type StorageAdapter = {
 };
 
 export const createProjects = function(
+  this: any,
   storage: StorageAdapter,
   initialState: ProjectsState
 ) {

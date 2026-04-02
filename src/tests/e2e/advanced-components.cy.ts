@@ -199,7 +199,7 @@ describe('advanced-components', () => {
       cy.get('[data-testid="memory-monitor"]').within(() => {
         cy.get('[data-testid="memory-usage-bar"]').should('have.attr', 'data-usage').then((usage) => {
           const usageValue = usage as unknown as string;
-          expect(parseInt(usageValue)).to.be.greaterThan(10);
+          cy.wrap(parseInt(usageValue)).should('be.greaterThan', 10);
         });
       });
       

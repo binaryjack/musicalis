@@ -23,7 +23,7 @@ beforeEach(() => {
 });
 
 // Handle uncaught exceptions during tests
-Cypress.on('uncaught:exception', (err, runnable) => {
+Cypress.on('uncaught:exception', (err) => {
   // Ignore audio context errors during testing
   if (err.message.includes('AudioContext') ||
       err.message.includes('Web Audio API')) {

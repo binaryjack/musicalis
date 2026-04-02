@@ -81,7 +81,7 @@ export const createAudioEngine = function() {
         const durationSecs = Tone.Time(timeValue).toSeconds();
         instrument.play(pitch, undefined, {
           duration: durationSecs,
-          gain: velocity > 1 ? velocity / 127 : velocity
+          gain: (velocity > 1 ? velocity / 127 : velocity) * volume
         });
       } catch (error) {
         console.error('Failed to play note with instrument:', error);
@@ -112,7 +112,7 @@ export const createAudioEngine = function() {
         try {
           instrument.play(noteData.note.pitch, time, {
             duration: Tone.Time(noteData.note.duration).toSeconds(),
-            gain: noteData.note.velocity > 1 ? noteData.note.velocity / 127 : noteData.note.velocity
+            gain: (noteData.note.velocity > 1 ? noteData.note.velocity / 127 : noteData.note.velocity) * volume
           });
         } catch (e) {
           console.error("Instrument play error:", e);

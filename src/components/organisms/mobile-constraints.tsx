@@ -1,4 +1,4 @@
-import React from 'react';
+
 import { useMobileConstraints } from '../../hooks/useMobileConstraints';
 import { MobileConstraintsContext } from '../../hooks/MobileConstraintsContext';
 

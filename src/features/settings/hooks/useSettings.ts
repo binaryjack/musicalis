@@ -1,7 +1,6 @@
 import { useDispatch, useSelector } from 'react-redux';
 import type { RootState } from '../../../store/store';
-import type { SettingsState, AudioSettings } from '../../../types/settingsTypes';
-import type { ExportSettings, ColorMappingSettings } from '../../../types';
+import type { SettingsState, AudioSettings, ExportSettings, ColorMappingSettings } from '../../../types/settingsTypes';
 
 // Simple action creators
 const updateSettings = (updates: Partial<SettingsState>) => ({ type: 'settings/updateSettings', payload: updates });

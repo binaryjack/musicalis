@@ -34,7 +34,8 @@
     "redux-saga": "^1.4.2",
     "reselect": "^5.1.1",
     "soundfont-player": "^0.12.0",
-    "tone": "^15.1.22"
+    "tone": "^15.1.22",
+    "vexflow": "^5.0.0"
   },
   "devDependencies": {
     "@cypress/code-coverage": "^4.0.3",

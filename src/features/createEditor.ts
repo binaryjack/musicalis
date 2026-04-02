@@ -9,7 +9,7 @@ type EditorActions = {
   readonly setError: (error: string) => void;
 };
 
-export const createEditor = function(initialState: EditorState) {
+export const createEditor = function(this: any, initialState: EditorState) {
   let currentState = initialState;
   const listeners = new Set<(state: EditorState) => void>();
   

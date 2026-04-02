@@ -1,6 +1,7 @@
+import { Renderer, Stave, StaveNote, Voice, Formatter } from 'vexflow';
 
 import { useEffect, useRef } from 'react';
-import type { NoteDuration } from '../../types/musicTypes';
+import type { NoteDuration, MusicNote } from '../../types/musicTypes';
 import type { ProjectData } from '../../services/projectService';
 
 export interface StaffCanvasProps {

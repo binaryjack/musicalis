@@ -12,22 +12,21 @@ import { useEditor } from '../features/editor/hooks/useEditor';
 import { usePlayback } from '../hooks/usePlayback';
 import { useProject } from '../hooks/useProject';
 import {
-  canFitNoteInBar,
   validateMeasureMatrix,
   reconstructBarNotes,
   createEmptyBar,
     getEffectiveTimeSignature,
-    getBaseDurationForBeatValue,
-    getNoteDurationBeats,
     initializeStaff,
     parseTimeSignature
 } from '../shared/utils/music-helpers';
-import type { MusicNote, NoteDuration, Staff } from '../types/musicTypes';
-import { MusicalElementType } from '../types';
-
+import type { Note, MusicNote, NoteDuration, Staff } from '../types/musicTypes';
 import { MIDI_INSTRUMENTS } from '../shared/utils/midi-instruments';
 
-export const EditorPage = () => {
+interface EditorPageProps {
+  onSettings?: () => void;
+}
+
+export const EditorPage = ({ onSettings }: EditorPageProps) => {
   const { editorUI: { mode }, setMode } = useEditor();
   const project = useProject();
   const playback = usePlayback();
@@ -38,7 +37,6 @@ export const EditorPage = () => {
   const [videoResolution, setVideoResolution] = useState<string>('1080p');
   const [audioQuality, setAudioQuality] = useState<string>('high');
   const [cursorPosition, setCursorPosition] = useState<number>(0);
-  const [zoom, setZoom] = useState<number>(1);
   const defaultTimeSignature = parseTimeSignature('4/4');
   const [staffs, setStaffs] = useState<Staff[]>([
     initializeStaff({
@@ -251,7 +249,7 @@ export const EditorPage = () => {
         { id: 'save', label: 'Save', icon: '💾', action: () => project.saveProject() },
         { id: 'load', label: 'Load', icon: '📂', action: () => console.log('Load file') },
         { id: 'sep1', label: '', separator: true },
-        { id: 'settings', label: 'Settings', icon: '⚙️', action: () => console.log('Settings') },
+        { id: 'settings', label: 'Settings', icon: '⚙️', action: () => onSettings?.() },
       ]
     },
     {
@@ -330,7 +328,7 @@ export const EditorPage = () => {
       staff.bars.forEach(bar => {
         bar.beats.forEach(beat => {
           beat.notes.forEach(note => {
-            if ((note as Record<string, unknown>).type !== 'rest') {
+            if ((note as any).type !== 'rest') {
               allNotes.push({
                 pitch: `${note.pitch}${note.octave}`,
                 duration: note.duration,
@@ -522,7 +520,7 @@ export const EditorPage = () => {
     setStaffs(prevStaffs => 
       prevStaffs.map(staff => {
         if (staff.id === staffId) {
-          let noteToMove: Note | null = null;
+          let noteToMove = null as unknown as Note;
           
           // First pass: find and remove the note without manually adding rests
           const tempBars = staff.bars.map((bar, bIdx) => {
@@ -955,10 +953,6 @@ export const EditorPage = () => {
                 staff={staff}
                 playheadPosition={cursorPosition}
                 darkMode={true}
-                selectedTool={{
-                  type: selectedRest ? MusicalElementType.REST : MusicalElementType.NOTE,
-                  duration: selectedDuration as never
-                }}
                 selectedDuration={selectedDuration}
                 selectedRest={selectedRest}
                 mode={mode}
