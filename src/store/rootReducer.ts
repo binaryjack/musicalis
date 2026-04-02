@@ -5,6 +5,7 @@ import playbackReducer from '../features/playback/store/playbackSlice';
 import colorMappingReducer from '../features/colorMapping/store/colorMappingSlice';
 import videoExportReducer from '../features/videoExport/store/videoExportSlice';
 import settingsReducer from '../features/settings/store/settingsSlice';
+import { btReducer } from '../features/behavior-tree/store/bt-slice';
 
 const rootReducer = combineReducers({
   projects: projectsReducer,
@@ -13,6 +14,7 @@ const rootReducer = combineReducers({
   colorMapping: colorMappingReducer,
   videoExport: videoExportReducer,
   settings: settingsReducer,
+  behaviorTree: btReducer,
 });
 
 export default rootReducer;

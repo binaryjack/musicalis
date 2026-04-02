@@ -1,6 +1,9 @@
 import { useState } from 'react';
 import { useSettings } from '../features/settings/hooks/useSettings';
+import { BehaviorTreeEditor } from '../features/behavior-tree';
 import styles from './SettingsPage.module.css';
+
+type SettingsTab = 'general' | 'behavior-tree';
 
 interface SettingsPageProps {
   onBack?: () => void;
@@ -9,6 +12,7 @@ interface SettingsPageProps {
 export const SettingsPage = ({ onBack }: SettingsPageProps) => {
   const { settings, updateSettings, resetSettings } = useSettings();
   const [hasChanges, setHasChanges] = useState(false);
+  const [activeTab, setActiveTab] = useState<SettingsTab>('general');
 
   const handleSave = () => {
     // Settings are auto-saved via Redux, just update UI
@@ -45,22 +49,57 @@ export const SettingsPage = ({ onBack }: SettingsPageProps) => {
           ← Back to Editor
         </button>
         <h1 style={{ margin: 0, fontSize: '18px', fontWeight: 'bold' }}>⚙️ Settings</h1>
+
+        {/* Tab bar */}
+        <div style={{ display: 'flex', gap: '4px', marginLeft: '24px' }}>
+          {([
+            { id: 'general',       label: '⚙ General' },
+            { id: 'behavior-tree', label: '🌳 Behavior Trees' },
+          ] as { id: SettingsTab; label: string }[]).map(tab => (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id)}
+              style={{
+                padding: '6px 14px',
+                backgroundColor: activeTab === tab.id ? '#4a9eff' : 'transparent',
+                color: activeTab === tab.id ? '#fff' : '#aaa',
+                border: '1px solid',
+                borderColor: activeTab === tab.id ? '#4a9eff' : '#555',
+                borderRadius: '6px',
+                cursor: 'pointer',
+                fontSize: '13px',
+              }}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
       </div>
+
+      {/* ── General Tab ────────────────────────── */}
+      {activeTab === 'general' && (
       <div className={styles.settingsContainer}>
-      <p>Settings interface will be fully implemented after template system is ready.</p>
       <p>Current theme: {settings.theme}</p>
       <div>
-        <button onClick={handleSave} disabled={!hasChanges}>
-          Save Changes
-        </button>
-        <button onClick={handleReset}>
+        <button onClick={() => { resetSettings(); setHasChanges(false); }}>
           Reset to Defaults
         </button>
         <button onClick={() => {updateSettings({theme: 'dark'}); setHasChanges(true);}}>
           Test Theme Change
         </button>
+        <button onClick={() => setHasChanges(false)} disabled={!hasChanges}>
+          Save Changes
+        </button>
       </div>
       </div>
+      )}
+
+      {/* ── Behavior Tree Tab ──────────────────── */}
+      {activeTab === 'behavior-tree' && (
+        <div style={{ padding: '16px', height: 'calc(100vh - 120px)' }}>
+          <BehaviorTreeEditor />
+        </div>
+      )}
     </div>
   );
 };
