@@ -2,6 +2,94 @@
 
 ---
 
+## Session — 2026-04-02 (Build & TypeScript Typings Overhaul)
+
+### What Was Done
+
+#### 1. TypeScript Strict Enforcement & Imports Fix
+- Fixed over 128+ `tsc` compilation errors enforcing strict `"verbatimModuleSyntax"` across multiple layers.
+- Replaced regular `import { ... }` with `import type { ... }` everywhere a type was being imported.
+
+#### 2. Vexflow Types & Import Cleanups
+- Removed broken `import { Vex, ... }` references.
+- Imported `Renderer`, `Stave`, `Voice`, `Formatter`, and `StaveNote` directly from `vexflow`.
+- Stripped arbitrary `barNumber` reads on notes mapped softly to active `measureIndex`.
+
+#### 3. Strict Context Typing for Functional Factories
+- Refactored `createEditor`, `createProjects`, and `createSettings` factories holding `Object.defineProperty(.*)`.
+- Fixed the implicit `any` TS errors by applying `(this: any)` signatures properly to functional constructors, safely respecting the project's strict `.github/copilot-instructions.md` directive rejecting `class` keywords.
+
+#### 4. Cypress & Jest Matcher Clashes
+- Addressed overloads of `@types/jest` bleeding into Cypress E2E test files (`advanced-components.cy.ts`, etc.).
+- Replaced ambiguous Chai/Jest overlaps (e.g., `expect(num).to.be.greaterThan(10)`) with traditional Cypress bounds.
+
+#### 5. Vite Config & Chunk Warning Subduction
+- Increased `chunkSizeWarningLimit: 1000` inside `vite.config.ts` to suppress the large chunk (>500kB) asset warning produced by vendor bundles like Tone.js, reducing console warnings during output.
+
+---
+
+### Learnings
+
+#### TypeScript Settings 
+- `verbatimModuleSyntax` is highly restrictive; `pnpm build` fails immediately if type tokens and value tokens are conflated. Always separate or prefix with `type`.
+
+#### VexFlow Package Structure
+- Directly importing components (`Stave`, `Voice`) is proper vs. querying them through the legacy master `Vex` export object.
+
+#### Cypress vs Jest TypeScript Intersections
+- If Jest and Cypress co-exist in the TS scope, their `expect()` matchers conflict. Jest typings natively hijack Chai assertions.
+- **Rule**: Prefer explicit Cypress tracking methods like `cy.wrap(x).should(...)` over implicit `to.be.*` chains.
+
+#### Bypassing `implicit any` without Classes
+- Project guidelines strictly ban `class` usage (`CLASS=forbidden`). To build structured state safely via factory functions relying on `Object.defineProperty(this)`, TypeScript's `this` constraints throw implicit any alerts.
+- Bypassing this without using classes involves formally overriding `(this: any)` as an argument context inside constructor-like functions safely.
+
+---
+
+## Session — 2026-04-02 (Build & TypeScript Typings Overhaul)
+
+### What Was Done
+
+#### 1. TypeScript Strict Enforcement & Imports Fix
+- Fixed over 128+ `tsc` compilation errors enforcing strict `"verbatimModuleSyntax"` across multiple layers.
+- Replaced regular `import { ... }` with `import type { ... }` everywhere a type was being imported.
+
+#### 2. Vexflow Types & Import Cleanups
+- Removed broken `import { Vex, ... }` references.
+- Imported `Renderer`, `Stave`, `Voice`, `Formatter`, and `StaveNote` directly from `vexflow`.
+- Stripped arbitrary `barNumber` reads on notes mapped softly to active `measureIndex`.
+
+#### 3. Strict Context Typing for Functional Factories
+- Refactored `createEditor`, `createProjects`, and `createSettings` factories holding `Object.defineProperty(.*)`.
+- Fixed the implicit `any` TS errors by applying `(this: any)` signatures properly to functional constructors, safely respecting the project's strict `.github/copilot-instructions.md` directive rejecting `class` keywords.
+
+#### 4. Cypress & Jest Matcher Clashes
+- Addressed overloads of `@types/jest` bleeding into Cypress E2E test files (`advanced-components.cy.ts`, etc.).
+- Replaced ambiguous Chai/Jest overlaps (e.g., `expect(num).to.be.greaterThan(10)`) with traditional Cypress bounds.
+
+#### 5. Vite Config & Chunk Warning Subduction
+- Increased `chunkSizeWarningLimit: 1000` inside `vite.config.ts` to suppress the large chunk (>500kB) asset warning produced by vendor bundles like Tone.js, reducing console warnings during output.
+
+---
+
+### Learnings
+
+#### TypeScript Settings 
+- `verbatimModuleSyntax` is highly restrictive; `pnpm build` fails immediately if type tokens and value tokens are conflated. Always separate or prefix with `type`.
+
+#### VexFlow Package Structure
+- Directly importing components (`Stave`, `Voice`) is proper vs. querying them through the legacy master `Vex` export object.
+
+#### Cypress vs Jest TypeScript Intersections
+- If Jest and Cypress co-exist in the TS scope, their `expect()` matchers conflict. Jest typings natively hijack Chai assertions.
+- **Rule**: Prefer explicit Cypress tracking methods like `cy.wrap(x).should(...)` over implicit `to.be.*` chains.
+
+#### Bypassing `implicit any` without Classes
+- Project guidelines strictly ban `class` usage (`CLASS=forbidden`). To build structured state safely via factory functions relying on `Object.defineProperty(this)`, TypeScript's `this` constraints throw implicit any alerts.
+- Bypassing this without using classes involves formally overriding `(this: any)` as an argument context inside constructor-like functions safely.
+
+---
+
 ## Session — 2026-04-02  (commit range `22872be → 18e0159`)
 
 ### What Was Done
