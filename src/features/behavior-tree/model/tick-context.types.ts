@@ -24,10 +24,16 @@ export interface HoveredSubdivision {
   barIndex: number;
   beatIndex: number;
   subdivIndex: number;
+  subdivOffset: number;
   /** True when this slot is a legal drop target for the selected duration */
   isAllowed: boolean;
   hasNote: boolean;
   hasRest: boolean;
+}
+
+export interface TickCommand {
+  type: string;
+  payload?: Record<string, unknown>;
 }
 
 export interface TickContext {
@@ -41,12 +47,16 @@ export interface TickContext {
   /** Fine-grained subdivision hover — null when cursor is not over any staff cell */
   hoveredSubdivision: HoveredSubdivision | null;
   selectedDuration: string;
+  /** True when the note tool is active, meaning clicking drops a note */
+  isNoteToolActive: boolean;
   /** True from beginDrag until commitDrag / cancelDrag */
   isDragging: boolean;
   dragSourceNoteId: string | null;
   /** True while a ctrl+drag sustain/beam operation is in progress */
   isSustainMode: boolean;
   timestamp: number;
+  /** Queue of commands resulting from behavior tree actions */
+  commands: TickCommand[];
 }
 
 export const emptyTickContext = (): TickContext => ({
@@ -59,8 +69,10 @@ export const emptyTickContext = (): TickContext => ({
   hoveredBar: null,
   hoveredSubdivision: null,
   selectedDuration: 'quarter',
+  isNoteToolActive: false,
   isDragging: false,
   dragSourceNoteId: null,
   isSustainMode: false,
   timestamp: 0,
+  commands: [],
 });

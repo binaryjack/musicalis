@@ -1,4 +1,4 @@
-import type { TimeSignature, Bar, Beat, Staff, NoteDuration } from '../../types/musicTypes';
+import type { Bar, Beat, NoteDuration, Staff, TimeSignature } from '../../types/musicTypes'
 
 /**
  * Parse time signature string to TimeSignature object
@@ -182,7 +182,7 @@ export const getMeasureSlotCount = function(timeSignature: TimeSignature): numbe
 
 export const getNoteStartSlot = function(beatIndex: number, subdivisionOffset: number, timeSignature: TimeSignature): number {
   const slotsPerBeat = 16 / timeSignature.beatValue;
-  return Math.round((beatIndex + subdivisionOffset) * slotsPerBeat);
+  return Math.round((beatIndex + (subdivisionOffset || 0)) * slotsPerBeat);
 };
 
 export const getNoteSlotCount = function(duration: NoteDuration): number {
@@ -364,7 +364,7 @@ export const reconstructBarNotes = function(bar: Bar, timeSignature: TimeSignatu
   }));
 
   for (const el of finalElements) {
-    const beatIndex = Math.floor((el.beatIndex * slotsPerBeat + el.subdivisionOffset * slotsPerBeat) / slotsPerBeat);
+    const beatIndex = Math.floor((el.beatIndex * slotsPerBeat + (el.subdivisionOffset || 0) * slotsPerBeat) / slotsPerBeat);
     
     // Clean up temporary props
     delete el._startSlot;
@@ -393,3 +393,7 @@ export const getBarUsedBeats = function(bar: Bar): number {
   });
   return total;
 };
+
+
+
+

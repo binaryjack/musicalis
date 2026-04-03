@@ -1,13 +1,13 @@
-import { createSlice } from '@reduxjs/toolkit';
-import type { PayloadAction } from '@reduxjs/toolkit';
-import type { BTNodeDef, BTTreeDef } from '../model/node.types';
+import type { PayloadAction } from '@reduxjs/toolkit'
+import { createSlice } from '@reduxjs/toolkit'
+import type { BTNodeDef, BTTreeDef } from '../model/node.types'
 
 interface BTState {
   trees: BTTreeDef[];
   activeTreeId: string | null;
 }
 
-const DEFAULT_TREE: BTTreeDef = {
+export const DEFAULT_TREE: BTTreeDef = {
   id: 'default',
   name: 'Staff Interaction',
   description: 'Hover → Click-place → Drag → Ctrl+Sustain staff interaction behavior tree',
@@ -132,7 +132,7 @@ const DEFAULT_TREE: BTTreeDef = {
           { id: 'c-hov-design',   type: 'condition', label: 'Is Design Mode',    conditionKey: 'mode.isDesign' },
           { id: 'c-hov-subdiv',   type: 'condition', label: 'Subdivision Hovered', conditionKey: 'subdivision.isHovered' },
           { id: 'c-hov-allowed',  type: 'condition', label: 'Subdivision Allowed', conditionKey: 'subdivision.isAllowed' },
-          { id: 'c-hov-note',     type: 'condition', label: 'Note Selected',     conditionKey: 'note.isSelected' },
+          { id: 'c-hov-note',     type: 'condition', label: 'Note Tool Active',  conditionKey: 'toolbox.isNoteToolActive' },
           { id: 'a-hov-hl',       type: 'action',    label: 'Highlight Cell',    actionKey: 'subdivision.highlight' },
           { id: 'a-hov-ghost',    type: 'action',    label: 'Ghost Note',        actionKey: 'note.renderGhost' },
         ],

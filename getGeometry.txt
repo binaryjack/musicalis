@@ -1,0 +1,90 @@
+  const getGeometry = (x: number, y: number) => {
+    const barStartX = 130;
+    const staffTop = (height / 2) - (RenderConfig.staffLineSpacing * 2);
+    const barHeight = RenderConfig.staffLineSpacing * 4;
+
+    const layoutConfig: LayoutConfig = {
+      clefPadding: barStartX,
+      barPadding: 15,
+      barWidth: RenderConfig.barWidth,
+      staffHeight: barHeight,
+      staffTop
+    };
+
+    const layout = calculateStaffLayout(staff, layoutConfig);
+    const finalBarX = layout.totalWidth;
+    let hoveredBar = null;
+    let hoveredSubdivision: HoveredSubdivision | null = null;
+
+    if (x >= barStartX && x < finalBarX && y >= staffTop - 40 && y <= staffTop + barHeight + 40) {
+      // Find which bar we are in
+      const barBox = layout.bars.find(b => x >= b.x && x < b.x + b.width);
+      
+      if (barBox) {
+        hoveredBar = { staffId: staff.id, barIndex: barBox.index };
+
+        // Are we within the playable interior (after padding)?
+        if (x >= barBox.innerX && x <= barBox.innerX + barBox.innerWidth) {
+          const beatBox = barBox.beats.find(b => x >= b.x && x < b.x + b.width);
+          
+          if (beatBox) {
+            const timeSigValue = barBox.timeSignature.beatValue;
+            const durRaw = (selectedTool?.duration || selectedDuration || 'quarter') as string;
+            const durMap: Record<string, number> = { 'whole': 4, 'half': 2, 'quarter': 1, 'eighth': 0.5, 'sixteenth': 0.25 };
+            const durBeats = durMap[durRaw] || 1;
+            const targetDurValue = durBeats;
+
+            // Find matching subdivision based on nearest allowed duration slice
+            // Because subdivisions are generated strictly per sixteenths (or smaller), 
+            // we match bounds:
+            let selectedSubdiv = null;
+            let currentBestDistX = Infinity;
+            
+            for(let s of beatBox.subdivisions) {
+              // the offset slice should align with our selected duration
+              if (s.offset % targetDurValue === 0) {
+                 if (x >= s.x && x < s.x + s.width) {
+                    selectedSubdiv = s;
+                    break;
+                 }
+              }
+            }
+            
+            // Fallback to first if mismatch (unlikely except edges)
+            if (!selectedSubdiv && beatBox.subdivisions.length > 0) {
+               selectedSubdiv = beatBox.subdivisions[0];
+            }
+
+            if (selectedSubdiv) {
+              const exactBeatIndex = beatBox.index + selectedSubdiv.offset;
+              let hasNote = false;
+              let hasRest = false;
+
+              const beat = staff.bars[barBox.index]?.beats[beatBox.index];
+              if (beat) {
+                const noteAtPos = beat.notes.find(n => (n.subdivisionOffset || 0) === selectedSubdiv.offset);
+                if (noteAtPos) {
+                  if ((noteAtPos as any).type === 'rest') hasRest = true;
+                  else hasNote = true;
+                }
+              }
+
+              hoveredSubdivision = {
+                staffId: staff.id,
+                barIndex: barBox.index,
+                beatIndex: exactBeatIndex,
+                subdivIndex: selectedSubdiv.offset > 0 ? Math.round(selectedSubdiv.offset * 100) : 0,
+                subdivOffset: selectedSubdiv.offset,
+                isAllowed: true,
+                hasNote,
+                hasRest
+              };
+            }
+          }
+        }
+      }
+    }
+
+    return { barStartX, finalBarX, staffTop, barHeight, hoveredBar, hoveredSubdivision, beatsPerBar: layout.bars[0]?.beats.length || 4 };
+  };
+

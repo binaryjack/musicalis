@@ -1,5 +1,5 @@
-import type { BTRegistry } from '../model/registry.types';
-import { NODE_STATUS } from '../model/node.types';
+import { NODE_STATUS } from '../model/node.types'
+import type { BTRegistry } from '../model/registry.types'
 
 /**
  * Default registry of built-in conditions and actions.
@@ -55,6 +55,12 @@ export const defaultRegistry: BTRegistry = {
       label: 'Cursor In Bounds',
       description: 'True when cursor position is >= 0',
       fn: (ctx) => ctx.cursorPosition >= 0,
+    },
+    'toolbox.isNoteToolActive': {
+      key: 'toolbox.isNoteToolActive',
+      label: 'Note Tool Active',
+      description: 'True when the note tool is selected in design mode',
+      fn: (ctx) => ctx.isNoteToolActive,
     },
 
     // ── Interaction-layer conditions ───────────────────────────────────────

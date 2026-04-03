@@ -1,7 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { MusicalTool } from '../components/organisms/MusicalPalette'
 import type { HoveredSubdivision } from '../features/behavior-tree/model/tick-context.types'
-import { calculateStaffLayout, getGlyphX } from '../shared/utils/music-geometry'
+import {
+  getNoteDurationBeats
+} from '../shared/utils/music-helpers'
+import { calculateStaffLayout, getGlyphX, LayoutConfig } from '../shared/utils/music-geometry'
 import {
   getAccidentalGlyph,
   getClefGlyph,
@@ -239,24 +242,16 @@ export const MusicStaffCanvas = function(props: MusicStaffCanvasProps) {
     return { pitch: closest.pitch, octave: closest.octave };
   }, []);
 
-  const barStartX = 130;
-  const staffTop = (height / 2) - (RenderConfig.staffLineSpacing * 2);
-  const layoutConfig = {
-    clefPadding: barStartX,
-    barPadding: 15,
-    barWidth: RenderConfig.barWidth,
-    staffHeight: RenderConfig.staffLineSpacing * 4,
-    staffTop
-  };
-  const layout: ReturnType<typeof calculateStaffLayout> = calculateStaffLayout(staff, layoutConfig);
   /**
    * Draw the staff
    */
   const drawStaff = useCallback((ctx: CanvasRenderingContext2D) => {
+    const bars = staff.bars;
+    const barStartX = 130;
+    const finalBarX = barStartX + (bars.length * RenderConfig.barWidth);
+    
     ctx.clearRect(0, 0, width, height);
     
-    const bars = staff.bars;
-    const finalBarX = layout.totalWidth;
     // Set colors based on theme
     const lineColor = darkMode ? '#e0e0e0' : '#333';
     const textColor = darkMode ? '#e0e0e0' : '#333';
@@ -305,35 +300,41 @@ export const MusicStaffCanvas = function(props: MusicStaffCanvasProps) {
     // Draw bars and notes
     
     bars.forEach((bar, barIndex) => {
-        const barBox = layout.bars[barIndex];
-        const barX = barBox.x;
+      const barX = barStartX + (barIndex * RenderConfig.barWidth);
+      
+      // Draw bar line
+      ctx.strokeStyle = lineColor;
+      ctx.lineWidth = RenderConfig.barLineThickness;
+      ctx.beginPath();
+      ctx.moveTo(barX, staffTop);
+      ctx.lineTo(barX, staffTop + (RenderConfig.staffLineSpacing * 4));
+      ctx.stroke();
+      
+      // Draw beats in this bar
+      const beatsCount = bar.beats.length;
+      const PADDING = 15;
+        const innerBarWidth = RenderConfig.barWidth - (PADDING * 2);
+        const beatWidth = innerBarWidth / beatsCount;
+        const startBarContentX = barX + PADDING;
+      
+      bar.beats.forEach((beat, beatIndex) => {
+        // Compute precise visual dimensions
+        const timeSig = bar.timeSignature || staff.timeSignature || { beatsPerMeasure: 4, beatValue: 4, display: '4/4' };
+        
+        // Draw light beat separator lines (except for first beat which has bar line)
+        if (beatIndex > 0) {
+          const beatLineX = startBarContentX + (beatIndex * beatWidth);
+          ctx.strokeStyle = darkMode ? '#777' : '#bbb';
+          ctx.lineWidth = 1;
+          ctx.beginPath();
+          ctx.moveTo(beatLineX, staffTop);
+          ctx.lineTo(beatLineX, staffTop + (RenderConfig.staffLineSpacing * 4));
+          ctx.stroke();
+        }
+        
+        // const beatX = startBarContentX + (beatIndex * beatWidth) + (beatWidth / 2);
 
-        // Draw bar line
-        ctx.strokeStyle = lineColor;
-        ctx.lineWidth = RenderConfig.barLineThickness;
-        ctx.beginPath();
-        ctx.moveTo(barX, staffTop);
-        ctx.lineTo(barX, staffTop + (RenderConfig.staffLineSpacing * 4));
-        ctx.stroke();
-
-        bar.beats.forEach((beat, beatIndex) => {
-          const beatBox = barBox.beats[beatIndex];
-          const timeSig = barBox.timeSignature;
-          const beatWidth = beatBox.width;
-          const startBarContentX = barBox.innerX;
-
-          // Draw light beat separator lines (except for first beat which has bar line)
-          if (beatIndex > 0) {
-            const beatLineX = beatBox.x;
-            ctx.strokeStyle = darkMode ? '#777' : '#bbb';
-            ctx.lineWidth = 1;
-            ctx.beginPath();
-            ctx.moveTo(beatLineX, staffTop);
-            ctx.lineTo(beatLineX, staffTop + (RenderConfig.staffLineSpacing * 4));
-            ctx.stroke();
-          }
-
-          // --- BT HIGHLIGHT SUBSIVISION BACKGROUND ---
+        // --- BT HIGHLIGHT SUBSIVISION BACKGROUND ---
         if (highlightedSubdivision && 
             highlightedSubdivision.barIndex === barIndex && 
               Math.floor(highlightedSubdivision.beatIndex) === beatIndex) {
@@ -345,10 +346,29 @@ export const MusicStaffCanvas = function(props: MusicStaffCanvasProps) {
           ctx.save();
           ctx.fillStyle = darkMode ? 'rgba(74, 255, 158, 0.15)' : 'rgba(74, 255, 158, 0.2)';
           ctx.fillRect(startX, staffTop, bgWidth, RenderConfig.staffLineSpacing * 4);
-          ctx.strokeStyle = darkMode ? 'rgba(74, 255, 158, 0.5)' : 'rgba(74, 255, 158, 0.7)';
+          ctx.strokeStyle = darkMode ? 'rgba(74, 255, 158, 0.3)' : 'rgba(74, 255, 158, 0.4)';
           ctx.strokeRect(startX, staffTop, bgWidth, RenderConfig.staffLineSpacing * 4);
           ctx.restore();
         }
+
+        // --- HIGHLIGHT DURATION BACKGROUND FOR EACH NOTE ---
+        beat.notes.forEach(note => {
+          if (draggedNote && draggedNote.note.id === note.id) return;
+          
+          const durBeats = getNoteDurationBeats(note.duration);
+          const unitsTaken = durBeats / (4 / timeSig.beatValue); // Proportional multiplier
+          const bgWidth = beatWidth * unitsTaken;
+          
+          ctx.save();
+          ctx.fillStyle = darkMode ? 'rgba(74, 158, 255, 0.1)' : 'rgba(74, 158, 255, 0.2)';
+          // Fill from left edge of this beat to the right according to proportional length
+            const bgStartX = startBarContentX + (beatIndex * beatWidth) + ((note.subdivisionOffset || 0) * beatWidth);
+            ctx.fillRect(bgStartX, staffTop, bgWidth, RenderConfig.staffLineSpacing * 4);
+            // Optional border to show block edges clearly
+            ctx.strokeStyle = darkMode ? 'rgba(74, 158, 255, 0.3)' : 'rgba(74, 158, 255, 0.4)';
+            ctx.strokeRect(bgStartX, staffTop, bgWidth, RenderConfig.staffLineSpacing * 4);
+          ctx.restore();
+        });
 
         // Draw each note/rest in this beat
         beat.notes.forEach(note => {
@@ -356,21 +376,7 @@ export const MusicStaffCanvas = function(props: MusicStaffCanvasProps) {
             return; // don't draw original, it will be drawn at current position
           }
 
-          const durBeats = getDurationValue((note as any).duration || 'quarter');
-          const unitsTaken = durBeats / (4 / timeSig.beatValue);
-          const bgWidth = beatWidth * unitsTaken;
-
-          ctx.save();
-          ctx.fillStyle = darkMode ? 'rgba(74, 158, 255, 0.1)' : 'rgba(74, 158, 255, 0.2)';
-          // Fill from left edge of this beat to the right according to proportional length
-            const bgStartX = beatBox.x + ((note.subdivisionOffset || 0) * beatBox.width);
-            ctx.fillRect(bgStartX, staffTop, bgWidth, RenderConfig.staffLineSpacing * 4);
-            // Optional border to show block edges clearly
-            ctx.strokeStyle = darkMode ? 'rgba(74, 158, 255, 0.3)' : 'rgba(74, 158, 255, 0.4)';
-            ctx.strokeRect(bgStartX, staffTop, bgWidth, RenderConfig.staffLineSpacing * 4);
-          ctx.restore();
-
-          const noteDurBeats = getDurationValue((note as any).duration || 'quarter');
+const noteDurBeats = getDurationValue((note as any).duration || 'quarter');
             const unitsTakenForNote = noteDurBeats / (4 / timeSig.beatValue);
             const noteWidth = beatWidth * unitsTakenForNote;
 
@@ -378,7 +384,9 @@ export const MusicStaffCanvas = function(props: MusicStaffCanvasProps) {
             if ((note as any).type === 'rest') {
               // Render rest
               const restY = staffTop + 20; // Center rest on staff
-              const adjustedX = getGlyphX(layout, barIndex, beatIndex, note.subdivisionOffset || 0, (note as any).duration as any, note.visualOffsetX);
+              const startX = startBarContentX + (beatIndex * beatWidth) + ((note.subdivisionOffset || 0) * beatWidth);
+              const isWhole = (note as any).duration === 'whole';
+              const adjustedX = startX + (isWhole ? beatWidth * 0.5 : noteWidth / 2) + (note.visualOffsetX || 0);
 
             if (selectedElementId === note.id) {
               ctx.shadowColor = '#4a9eff';
@@ -395,7 +403,9 @@ export const MusicStaffCanvas = function(props: MusicStaffCanvasProps) {
           } else {
             // Render note (existing logic)
             const noteY = getNoteY(note.pitch, note.octave);
-              const adjustedX = getGlyphX(layout, barIndex, beatIndex, note.subdivisionOffset || 0, (note as any).duration as any, note.visualOffsetX);
+              const startX = startBarContentX + (beatIndex * beatWidth) + ((note.subdivisionOffset || 0) * beatWidth);
+              const isWhole = (note as any).duration === 'whole';
+              const adjustedX = startX + (isWhole ? beatWidth * 0.5 : noteWidth / 2) + (note.visualOffsetX || 0);
             const adjustedY = noteY + (note.visualOffsetY || 0);
 
             if (selectedElementId === note.id) {
@@ -458,35 +468,52 @@ export const MusicStaffCanvas = function(props: MusicStaffCanvasProps) {
     ctx.stroke();
 
     // --- DRAW HOVER GHOST NOTE ---
-      if (hoverGhost && mode === 'design') {
-          const { barIndex, beatIndex, pitch, octave, duration, subdivisionOffset } = hoverGhost;
-            const intBeatIndex = Math.floor(beatIndex);
-            const adjustedX = getGlyphX(layout, barIndex, intBeatIndex, subdivisionOffset, duration as any);
-            const y = getNoteY(pitch, octave);
+    if (hoverGhost && mode === 'design') {
+        const { barIndex, beatIndex, pitch, octave, duration, subdivisionOffset } = hoverGhost;
+          const barX = barStartX + (barIndex * RenderConfig.barWidth);
+          const beatsCount = bars[barIndex]?.beats.length || 4;
+          const PADDING = 15;
+          const innerBarWidth = RenderConfig.barWidth - (PADDING * 2);
+          const beatWidth = innerBarWidth / beatsCount;
+          const startBarContentX = barX + PADDING;
 
-          ctx.font = `${RenderConfig.noteFontSize}px Bravura`;
-          ctx.fillStyle = textColor;
-          const noteHeadGlyph = getNoteHeadGlyph(duration as any);
-          ctx.fillText(noteHeadGlyph, adjustedX - 8, y);
+          const noteY = getNoteY(pitch, octave);
 
+          const timeSigValue = staff?.timeSignature ? staff.timeSignature.beatValue : 4;
+          const durBeats = getDurationValue(duration as NoteDuration);
+          const unitsTaken = durBeats / (4 / timeSigValue);
+          const ghostNoteWidth = beatWidth * unitsTaken;
+          
+          const startX = startBarContentX + (beatIndex * beatWidth) + ((subdivisionOffset || 0) * beatWidth);
+          const adjustedX = startX + (duration === 'whole' ? beatWidth * 0.5 : ghostNoteWidth / 2);
+        
+        drawLedgerLines(ctx, adjustedX - 2, noteY, lineColor);
+        
+        ctx.font = `${RenderConfig.noteFontSize}px Bravura`;
+        ctx.fillStyle = textColor;
+        const noteHeadGlyph = getNoteHeadGlyph(duration as NoteDuration);
+        ctx.fillText(noteHeadGlyph, adjustedX - 8, noteY);
+        
         // Draw stem (for quarter notes and shorter)
         if (duration === 'quarter' || duration === 'eighth' || duration === 'sixteenth') {
           ctx.strokeStyle = textColor;
           ctx.lineWidth = RenderConfig.stemThickness;
           ctx.beginPath();
-          ctx.moveTo(adjustedX + 4, y);
-          ctx.lineTo(adjustedX + 4, y - RenderConfig.stemHeight);
+          ctx.moveTo(adjustedX + 4, noteY);
+          ctx.lineTo(adjustedX + 4, noteY - RenderConfig.stemHeight);   
           ctx.stroke();
 
           // Draw flag
           const flagGlyph = getFlagGlyph(duration as NoteDuration, true);
           if (flagGlyph) {
             ctx.font = `${RenderConfig.noteFontSize}px Bravura`;
-            ctx.fillText(flagGlyph, adjustedX + 4, y - RenderConfig.stemHeight);
-
+            ctx.fillText(flagGlyph, adjustedX + 4, noteY - RenderConfig.stemHeight);
           }
         }
-      }
+        
+        ctx.restore();
+    }
+
     // Calculate button dimensions
     const barHeight = RenderConfig.staffLineSpacing * 4;
     const addButtonRadius = (barHeight * 0.7) / 2; // 70% of bar height
@@ -652,7 +679,9 @@ export const MusicStaffCanvas = function(props: MusicStaffCanvasProps) {
             const timeSigValue = staff?.timeSignature ? staff.timeSignature.beatValue : 4;
             const noteDurBeats = getDurationValue((note as any).duration || 'quarter');
             const noteWidth = beatWidth * (noteDurBeats / (4 / timeSigValue));
-            const adjustedX = getGlyphX(layout, barIndex, beatIndex, note.subdivisionOffset || 0, (note as any).duration as any, note.visualOffsetX);
+            const startX = startBarContentX + (beatIndex * beatWidth) + ((note.subdivisionOffset || 0) * beatWidth);
+            const isWhole = (note as any).duration === 'whole';
+            const adjustedX = startX + (isWhole ? beatWidth * 0.5 : noteWidth / 2) + (note.visualOffsetX || 0);
             let adjustedY = 0;
           if (isRest) {
             const staffTop = (height / 2) - (RenderConfig.staffLineSpacing * 2);
