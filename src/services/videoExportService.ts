@@ -1,4 +1,11 @@
-import type { VideoExportOptions } from '../components/organisms/video-export-controls';
+export interface VideoExportOptions {
+  format: 'mp4' | 'webm' | 'gif';
+  quality: 'high' | 'ultra-high' | 'medium' | 'low';
+  includeAudio: boolean;
+  fps?: number;
+  videoBitrate: number;
+  audioSampleRate: number;
+}
 
 export interface VideoExportService {
   exportVideo: (options: VideoExportOptions, onProgress: (progress: number) => void) => Promise<Blob>;

@@ -12,8 +12,5 @@ export * from "./staff-manager";
 // Enhanced UI Components
 export * from "../molecules/audio-quality-selector";
 export * from "../molecules/color-mapping-editor";
-export * from "./bar-management";
-export * from "./video-export-controls";
-export * from "./project-management";
 export * from "./responsive-layout";
 export * from "./mobile-constraints";

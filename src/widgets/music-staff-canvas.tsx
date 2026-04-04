@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { MusicalTool } from '../components/organisms/MusicalPalette'
 import type { HoveredSubdivision } from '../features/behavior-tree/model/tick-context.types'
-import { calculateStaffLayout, getGlyphX } from '../shared/utils/music-geometry'
+import { calculateStaffLayout, getTransientLayoutCenter } from '../shared/utils/music-geometry'
 import {
   getAccidentalGlyph,
   getClefGlyph,
@@ -37,16 +37,16 @@ interface MusicStaffCanvasProps {
 }
 
 const RenderConfig = {
-  staffHeight: 120,
-  barWidth: 200,
-  staffLineSpacing: 10,
+  staffHeight: 140,
+  barWidth: 280,
+  staffLineSpacing: 12,
   staffLineCount: 5,
-  noteRadius: 4,
+  noteRadius: 4.5,
   barLineThickness: 2,
-  clefFontSize: 42,
-  noteFontSize: 30,
-  timeSigFontSize: 24,
-  stemHeight: 35,
+  clefFontSize: 50,
+  noteFontSize: 36,
+  timeSigFontSize: 28,
+  stemHeight: 40,
   stemThickness: 1.5,
 };
 
@@ -55,7 +55,7 @@ export const MusicStaffCanvas = function(props: MusicStaffCanvasProps) {
     staff,
     mode = 'design',
     width = 1000,
-    height = 140, // Made thinner
+    height = 180, // Better space for higher staff lines
     playheadPosition = 0,
     darkMode = false,
     selectedDuration = 'quarter',
@@ -243,7 +243,7 @@ export const MusicStaffCanvas = function(props: MusicStaffCanvasProps) {
   const staffTop = (height / 2) - (RenderConfig.staffLineSpacing * 2);
   const layoutConfig = {
     clefPadding: barStartX,
-    barPadding: 15,
+    barPadding: 5,
     barWidth: RenderConfig.barWidth,
     staffHeight: RenderConfig.staffLineSpacing * 4,
     staffTop
@@ -316,11 +316,11 @@ export const MusicStaffCanvas = function(props: MusicStaffCanvasProps) {
         ctx.lineTo(barX, staffTop + (RenderConfig.staffLineSpacing * 4));
         ctx.stroke();
 
-        bar.beats.forEach((beat, beatIndex) => {
+        bar.beats.forEach((_beat, beatIndex) => {
           const beatBox = barBox.beats[beatIndex];
           const timeSig = barBox.timeSignature;
           const beatWidth = beatBox.width;
-          const startBarContentX = barBox.innerX;
+          // const startBarContentX = barBox.innerX;
 
           // Draw light beat separator lines (except for first beat which has bar line)
           if (beatIndex > 0) {
@@ -341,7 +341,7 @@ export const MusicStaffCanvas = function(props: MusicStaffCanvasProps) {
             const durBeats = getDurationValue((selectedTool?.duration as NoteDuration) || (selectedDuration as NoteDuration) || 'quarter');
             const unitsTaken = durBeats / (4 / timeSig.beatValue);
             const bgWidth = beatWidth * unitsTaken;
-            const startX = startBarContentX + (beatIndex * beatWidth) + (highlightedSubdivision.subdivOffset * beatWidth);
+            const startX = beatBox.x + (highlightedSubdivision.subdivOffset * beatWidth);
           ctx.save();
           ctx.fillStyle = darkMode ? 'rgba(74, 255, 158, 0.15)' : 'rgba(74, 255, 158, 0.2)';
           ctx.fillRect(startX, staffTop, bgWidth, RenderConfig.staffLineSpacing * 4);
@@ -351,80 +351,71 @@ export const MusicStaffCanvas = function(props: MusicStaffCanvasProps) {
         }
 
         // Draw each note/rest in this beat
-        beat.notes.forEach(note => {
-          if (draggedNote && draggedNote.note.id === note.id) {
+        beatBox.elements.forEach(elementBox => {
+          const note = elementBox.note;
+          if (draggedNote && draggedNote.note.id === elementBox.id) {
             return; // don't draw original, it will be drawn at current position
           }
-
-          const durBeats = getDurationValue((note as any).duration || 'quarter');
-          const unitsTaken = durBeats / (4 / timeSig.beatValue);
-          const bgWidth = beatWidth * unitsTaken;
 
           ctx.save();
           ctx.fillStyle = darkMode ? 'rgba(74, 158, 255, 0.1)' : 'rgba(74, 158, 255, 0.2)';
           // Fill from left edge of this beat to the right according to proportional length
-            const bgStartX = beatBox.x + ((note.subdivisionOffset || 0) * beatBox.width);
-            ctx.fillRect(bgStartX, staffTop, bgWidth, RenderConfig.staffLineSpacing * 4);
+            ctx.fillRect(elementBox.x, staffTop, elementBox.width, RenderConfig.staffLineSpacing * 4);
             // Optional border to show block edges clearly
             ctx.strokeStyle = darkMode ? 'rgba(74, 158, 255, 0.3)' : 'rgba(74, 158, 255, 0.4)';
-            ctx.strokeRect(bgStartX, staffTop, bgWidth, RenderConfig.staffLineSpacing * 4);
+            ctx.strokeRect(elementBox.x, staffTop, elementBox.width, RenderConfig.staffLineSpacing * 4);
           ctx.restore();
 
-          const noteDurBeats = getDurationValue((note as any).duration || 'quarter');
-            const unitsTakenForNote = noteDurBeats / (4 / timeSig.beatValue);
-            const noteWidth = beatWidth * unitsTakenForNote;
-
             // Check if this is a rest or a note
-            if ((note as any).type === 'rest') {
+            if (elementBox.type === 'rest') {
               // Render rest
               const restY = staffTop + 20; // Center rest on staff
-              const adjustedX = getGlyphX(layout, barIndex, beatIndex, note.subdivisionOffset || 0, (note as any).duration as any, note.visualOffsetX);
+              const adjustedX = elementBox.exactCenter;
 
-            if (selectedElementId === note.id) {
+            if (selectedElementId === elementBox.id) {
               ctx.shadowColor = '#4a9eff';
               ctx.shadowBlur = 10;
             }
-            
+
             ctx.font = `${RenderConfig.noteFontSize}px Bravura`;
             ctx.fillStyle = textColor;
-            const restGlyph = getRestGlyph(note.duration);
+            const restGlyph = getRestGlyph(elementBox.duration as NoteDuration);
             ctx.fillText(restGlyph, adjustedX - 8, restY);
-            
+
             ctx.shadowColor = 'transparent';
             ctx.shadowBlur = 0;
           } else {
             // Render note (existing logic)
-            const noteY = getNoteY(note.pitch, note.octave);
-              const adjustedX = getGlyphX(layout, barIndex, beatIndex, note.subdivisionOffset || 0, (note as any).duration as any, note.visualOffsetX);
-            const adjustedY = noteY + (note.visualOffsetY || 0);
+            const noteY = getNoteY(elementBox.pitch!, elementBox.octave!);
+            const adjustedX = elementBox.exactCenter;
+            const adjustedY = noteY + (elementBox.visualOffsetY || 0);
 
-            if (selectedElementId === note.id) {
+            if (selectedElementId === elementBox.id) {
               ctx.shadowColor = '#4a9eff';
               ctx.shadowBlur = 10;
             }
-            
+
             // Draw ledger lines
             drawLedgerLines(ctx, adjustedX - 2, noteY, lineColor);
 
             // Draw note head
             ctx.font = `${RenderConfig.noteFontSize}px Bravura`;
             ctx.fillStyle = textColor;
-            const noteHeadGlyph = getNoteHeadGlyph(note.duration);
+            const noteHeadGlyph = getNoteHeadGlyph(elementBox.duration as NoteDuration);
             ctx.fillText(noteHeadGlyph, adjustedX - 8, adjustedY);
-            
+
             // Draw stem (for quarter notes and shorter)
-            if (note.duration === 'quarter' || note.duration === 'eighth' || note.duration === 'sixteenth') {
+            if (elementBox.duration === 'quarter' || elementBox.duration === 'eighth' || elementBox.duration === 'sixteenth') {
               ctx.strokeStyle = textColor;
               ctx.lineWidth = RenderConfig.stemThickness;
               ctx.beginPath();
               ctx.moveTo(adjustedX + 4, adjustedY);
-              ctx.lineTo(adjustedX + 4, adjustedY - RenderConfig.stemHeight);
+              ctx.lineTo(adjustedX + 4, adjustedY - RenderConfig.stemHeight);   
               ctx.stroke();
-            
+
               // Draw flag
-              const flagGlyph = getFlagGlyph(note.duration, true);
+              const flagGlyph = getFlagGlyph(elementBox.duration, true);
               if (flagGlyph) {
-                ctx.font = `${RenderConfig.noteFontSize}px Bravura`;
                 ctx.fillText(flagGlyph, adjustedX + 4, adjustedY - RenderConfig.stemHeight);
               }
             }
@@ -461,7 +452,7 @@ export const MusicStaffCanvas = function(props: MusicStaffCanvasProps) {
       if (hoverGhost && mode === 'design') {
           const { barIndex, beatIndex, pitch, octave, duration, subdivisionOffset } = hoverGhost;
             const intBeatIndex = Math.floor(beatIndex);
-            const adjustedX = getGlyphX(layout, barIndex, intBeatIndex, subdivisionOffset, duration as any);
+            const adjustedX = getTransientLayoutCenter(layout, barIndex, intBeatIndex, subdivisionOffset, duration as any);
             const y = getNoteY(pitch, octave);
 
           ctx.font = `${RenderConfig.noteFontSize}px Bravura`;
@@ -631,50 +622,30 @@ export const MusicStaffCanvas = function(props: MusicStaffCanvasProps) {
   }, [drawStaff, fontLoaded]);
 
   const getHitNote = useCallback((x: number, y: number) => {
-    const barStartX = 130;
-    
     for (let barIndex = 0; barIndex < staff.bars.length; barIndex++) {
-      const bar = staff.bars[barIndex];
-      const barX = barStartX + (barIndex * RenderConfig.barWidth);
-      const beatsCount = bar.beats.length;
-      const PADDING = 15;
-        const innerBarWidth = RenderConfig.barWidth - (PADDING * 2);
-        const beatWidth = innerBarWidth / beatsCount;
-        const startBarContentX = barX + PADDING;
-      
-      for (let beatIndex = 0; beatIndex < bar.beats.length; beatIndex++) {
-        const beat = bar.beats[beatIndex];
-        // const beatX = startBarContentX + (beatIndex * beatWidth) + (beatWidth / 2);
-        
-        for (const note of beat.notes) {
-          const isRest = (note as any).type === 'rest';
-            
-            const timeSigValue = staff?.timeSignature ? staff.timeSignature.beatValue : 4;
-            const noteDurBeats = getDurationValue((note as any).duration || 'quarter');
-            const noteWidth = beatWidth * (noteDurBeats / (4 / timeSigValue));
-            const adjustedX = getGlyphX(layout, barIndex, beatIndex, note.subdivisionOffset || 0, (note as any).duration as any, note.visualOffsetX);
-            let adjustedY = 0;
-          if (isRest) {
-            const staffTop = (height / 2) - (RenderConfig.staffLineSpacing * 2);
-            adjustedY = staffTop + 20; // Center of staff
-          } else {
-            const noteY = getNoteY(note.pitch, note.octave);
-            adjustedY = noteY + (note.visualOffsetY || 0);
-          }
+      const barBox = layout.bars[barIndex];
+      for (let beatIndex = 0; beatIndex < barBox.beats.length; beatIndex++) {
+        const beatBox = barBox.beats[beatIndex];
 
-          // Hit detection radius (approx size of note head + leeway)
-          // Scale dynamically for 16th notes avoiding absorbing the adjacent slots
-          const hitRadiusX = Math.min(15, Math.max(5, (noteWidth / 2) * 0.9));
-          const hitRadiusY = isRest ? 20 : 15;
+        // Search in reverse so drawn-on-top elements are hit first
+        for (let i = beatBox.elements.length - 1; i >= 0; i--) {
+          const element = beatBox.elements[i];
+          if (element.type === 'rest') continue;
 
-          if (Math.abs(x - adjustedX) <= hitRadiusX && Math.abs(y - adjustedY) <= hitRadiusY) {
-            return { barIndex, beatIndex, note, adjustedX, adjustedY };
+          // Pure layout bounds math, perfectly synced with visual layout
+          const adjustedY = getNoteY(element.pitch!, element.octave!) + (element.visualOffsetY || 0);
+          const hitRadiusY = 15;
+          const noteStartX = element.x;
+          const noteEndX = Math.max(element.x + element.width, element.x + 20);
+
+          if (x >= noteStartX && x <= noteEndX && Math.abs(y - adjustedY) <= hitRadiusY) {
+            return { barIndex, beatIndex, note: element.note, adjustedX: element.exactCenter, adjustedY };
           }
         }
       }
     }
     return null;
-  }, [staff, getNoteY]);
+  }, [layout, getNoteY]);
 
   /**
    * Handle double click
@@ -696,7 +667,7 @@ export const MusicStaffCanvas = function(props: MusicStaffCanvasProps) {
   }, [mode, staff.id, getHitNote, onRemoveNote]);
 
   const btEvents = useStaffBtEvents({
-    staff, mode, zoom, height, RenderConfig,
+    layout, staff, mode, zoom, height, RenderConfig,
     selectedDuration, selectedRest, selectedTool,
     draggedNote, setDraggedNote,
     hoveredButton, setHoveredButton,

@@ -237,27 +237,40 @@ export const validateMeasureMatrix = function(
     return false; // Out of bounds
   }
 
-  // Allow perfect chords: If there is another note naturally starting here, 
+  // Allow perfect chords: If there is another note naturally starting here,
   // we do not rigorously block it based on standard slot occupation, but we still ensure
   // it doesn't cross into a slot occupied by a different note that started EARLIER.
+  let isChord = false;
+  let matchesExistingChordPerfectly = true;
+
   for (let i = 0; i < newSpan; i++) {
     const pos = newStart + i;
     if (matrix[pos] !== null) {
-      // Overlap detected. Is it a chord match?
-      // Just check if this slot belongs to a note that ALSO started exactly at newStart.
-      // We can simplify: we allow the placement, the UI handles polyphony overlaps visually.
-      // But if the slot is occupied by a note that started before us, we block.
-      // Actually, to make it completely intuitive: allow overlaps, but DO NOT allow out of bounds.
-      // The user wants a "decision matrix" that guarantees standard behaviors. Let's strictly 
-      // reject ANY non-chord overlap. If i === 0 and the slot is already a head note start, it's a chord.
-      // But for total safety and "no impossible moves", let's block overlaps entirely unless we fully support polyphonic voices later.
-      // For now, let's relax it strictly for chords that don't overflow the bar.
-      // Let's just return false and keep it perfectly monotonic/homophonic for now unless they start exactly together.
-      if (i === 0 && noteStartsAtSlot[newStart]) {
-        // It's a chord, starting at the exact same beat. Permitted! (We assume the user wants chords)
+      const occupantsAtStart = bar.beats.flatMap(b => 
+        b.notes.map(n => ({ note: n, bIndex: b.index }))
+      ).filter(item => 
+        (item.note as any).type !== 'rest' && 
+        getNoteStartSlot(item.bIndex, item.note.subdivisionOffset, timeSignature) === newStart
+      );
+
+      const hasPerfectCompanion = occupantsAtStart.some(item => getNoteSlotCount(item.note.duration) === newSpan);
+
+      if (hasPerfectCompanion) {
+        isChord = true;
       } else {
-        return false; // Slot is occupied by a note that did not start exactly with us, or we are extending into another note's territory
+        matchesExistingChordPerfectly = false;
       }
+    }
+  }
+
+  if (isChord && matchesExistingChordPerfectly) {
+    return true;
+  }
+
+  for (let i = 0; i < newSpan; i++) {
+    const pos = newStart + i;
+    if (matrix[pos] !== null) {
+      return false; // Overlap isn't a perfect chord
     }
   }
 

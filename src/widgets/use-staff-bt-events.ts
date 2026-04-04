@@ -4,11 +4,11 @@ import { tickTree } from '../features/behavior-tree/lib/bt-engine'
 import { defaultRegistry } from '../features/behavior-tree/lib/bt-registry'
 import type { HoveredSubdivision, MouseState, TickContext } from '../features/behavior-tree/model/tick-context.types'
 import { DEFAULT_TREE } from '../features/behavior-tree/store/bt-slice'
-import type { LayoutConfig } from '../shared/utils/music-geometry'
-import { calculateStaffLayout } from '../shared/utils/music-geometry'
+import type { StaffLayout } from '../shared/utils/music-geometry'
 import type { Note, NoteDuration, Staff } from '../types/musicTypes'
 
 interface BtEventsProps {
+  layout: StaffLayout;
   staff: Staff;
   mode: 'design' | 'playback';
   zoom: number;
@@ -41,7 +41,7 @@ interface BtEventsProps {
 
 export const useStaffBtEvents = (props: BtEventsProps) => {
   const {
-    staff, mode, zoom, height, RenderConfig,
+    layout, staff, mode, zoom, height, RenderConfig,
     selectedDuration, selectedRest, selectedTool,
     draggedNote, setDraggedNote,
     hoveredButton, setHoveredButton,
@@ -53,8 +53,8 @@ export const useStaffBtEvents = (props: BtEventsProps) => {
   } = props;
 
   const mouseStateRef = useRef<MouseState>({
-    x: 0, y: 0, 
-    isDown: false, isPressed: false, isUp: false, 
+    x: 0, y: 0,
+    isDown: false, isPressed: false, isUp: false,
     isCtrlDown: false, button: null
   });
 
@@ -62,19 +62,10 @@ export const useStaffBtEvents = (props: BtEventsProps) => {
   const dragSourceNoteIdRef = useRef<string | null>(null);
 
   const getGeometry = (x: number, y: number) => {
-    const barStartX = 130;
+    const barStartX = layout.clefPadding;
     const staffTop = (height / 2) - (RenderConfig.staffLineSpacing * 2);
     const barHeight = RenderConfig.staffLineSpacing * 4;
 
-    const layoutConfig: LayoutConfig = {
-      clefPadding: barStartX,
-      barPadding: 15,
-      barWidth: RenderConfig.barWidth,
-      staffHeight: barHeight,
-      staffTop
-    };
-
-    const layout = calculateStaffLayout(staff, layoutConfig);
     const finalBarX = layout.totalWidth;
     let hoveredBar = null;
     let hoveredSubdivision: HoveredSubdivision | null = null;
@@ -89,10 +80,9 @@ export const useStaffBtEvents = (props: BtEventsProps) => {
         // Expand clickable inner area recursively across padding to make bars fully reachable
         const snappedX = Math.max(barBox.innerX, Math.min(x, barBox.innerX + barBox.innerWidth - 0.001));
         const beatBox = barBox.beats.find(b => snappedX >= b.x && snappedX < b.x + b.width);
-          
+
           if (beatBox) {
-            const timeSigValue = barBox.timeSignature.beatValue;
-            const durRaw = (selectedTool?.duration || selectedDuration || 'quarter') as string;
+            const durRaw = ((draggedNote && draggedNote.note.duration) || selectedTool?.duration || selectedDuration || 'quarter') as string;
             const durMap: Record<string, number> = { 'whole': 4, 'half': 2, 'quarter': 1, 'eighth': 0.5, 'sixteenth': 0.25 };
             const durBeats = durMap[durRaw] || 1;
             const targetDurValue = durBeats;
@@ -144,7 +134,6 @@ export const useStaffBtEvents = (props: BtEventsProps) => {
             }
           }
         }
-      }
     }
 
     return { barStartX, finalBarX, staffTop, barHeight, hoveredBar, hoveredSubdivision, beatsPerBar: layout.bars[0]?.beats.length || 4 };
@@ -242,9 +231,10 @@ export const useStaffBtEvents = (props: BtEventsProps) => {
         }
         case 'note.add': {
           if (!geometry.hoveredSubdivision) break;
-          const { barIndex, beatIndex } = geometry.hoveredSubdivision;
+          const { barIndex, beatIndex, subdivOffset } = geometry.hoveredSubdivision;
+          const targetBeatIndex = beatIndex + (subdivOffset || 0);
           console.log("ADDING", mouseEventType, mouseStateRef.current.isPressed);
-          onAddNote?.(staff.id, barIndex, beatIndex, pitch, octave, ctx.selectedDuration as NoteDuration);
+          onAddNote?.(staff.id, barIndex, targetBeatIndex, pitch, octave, ctx.selectedDuration as NoteDuration);
           break;
         }
         case 'rest.deleteAtPosition': {
@@ -268,11 +258,11 @@ export const useStaffBtEvents = (props: BtEventsProps) => {
           isDraggingRef.current = false;
           dragSourceNoteIdRef.current = null;
           if (draggedNote && geometry.hoveredSubdivision) {
-             const targetBeatIndex = geometry.hoveredSubdivision.beatIndex;
-             if (draggedNote.barIndex !== geometry.hoveredSubdivision.barIndex || 
+             const targetBeatIndex = geometry.hoveredSubdivision.beatIndex + (geometry.hoveredSubdivision.subdivOffset || 0);     
+             if (draggedNote.barIndex !== geometry.hoveredSubdivision.barIndex ||
                  (draggedNote.beatIndex + (draggedNote.note.subdivisionOffset||0)) !== targetBeatIndex ||
                  draggedNote.note.pitch !== pitch || draggedNote.note.octave !== octave) {
-                 onMoveNote?.(staff.id, draggedNote.barIndex, draggedNote.beatIndex, draggedNote.note.id, 
+                 onMoveNote?.(staff.id, draggedNote.barIndex, draggedNote.beatIndex, draggedNote.note.id,
                               geometry.hoveredSubdivision.barIndex, targetBeatIndex, pitch, octave);
              }
           }
@@ -352,4 +342,5 @@ export const useStaffBtEvents = (props: BtEventsProps) => {
       isDraggingRef.current = false;
     }
   };
+;
 };

@@ -32,6 +32,7 @@ export const EditorPage = ({ onSettings }: EditorPageProps) => {
   const playback = usePlayback();
   const [selectedDuration, setSelectedDuration] = useState<NoteDuration>('quarter');
   const [selectedRest, setSelectedRest] = useState<string>('');
+  const [zoom, setZoom] = useState<number>(1.2);
   const [bpm, setBpm] = useState<number>(120);
   const [timeSignature, setTimeSignature] = useState<string>('4/4');
   const [videoResolution, setVideoResolution] = useState<string>('1080p');
@@ -660,7 +661,7 @@ export const EditorPage = ({ onSettings }: EditorPageProps) => {
                 }
                 return beat;
               });
-              
+
               const updatedBar = { ...bar, beats: updatedBeats };
               return reconstructBarNotes(updatedBar, timeSig);
             }
@@ -704,7 +705,7 @@ export const EditorPage = ({ onSettings }: EditorPageProps) => {
                 }
                 return beat;
               });
-              
+
               const updatedBar = { ...bar, beats: updatedBeats };
               return reconstructBarNotes(updatedBar, timeSig);
             }
@@ -944,13 +945,15 @@ export const EditorPage = ({ onSettings }: EditorPageProps) => {
           {staffs.map(staff => {
             // Calculate canvas width based on number of bars
             const barStartX = 130;
-            const finalBarX = barStartX + (staff.bars.length * 200) + 60; // barWidth=200 + extra space for buttons
+            const barWidth = 280;
+            const finalBarX = barStartX + (staff.bars.length * barWidth) + 60; // Extra space for buttons
             const canvasWidth = Math.max(800, finalBarX);
-            
+
             return (
               <MusicStaffCanvas
                 key={staff.id}
                 staff={staff}
+                zoom={zoom}
                 playheadPosition={cursorPosition}
                 darkMode={true}
                 selectedDuration={selectedDuration}
@@ -1018,6 +1021,19 @@ export const EditorPage = ({ onSettings }: EditorPageProps) => {
             step="0.01"
             value={playback.volume}
             onChange={(e) => playback.setVolume(parseFloat(e.target.value))}
+            style={{ width: '80px', cursor: 'pointer' }}
+          />
+        </div>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginLeft: '16px' }}>
+          <span title="Zoom">🔍</span>
+          <input
+            type="range"
+            min="0.5"
+            max="3"
+            step="0.1"
+            value={zoom}
+            onChange={(e) => setZoom(parseFloat(e.target.value))}
             style={{ width: '80px', cursor: 'pointer' }}
           />
         </div>

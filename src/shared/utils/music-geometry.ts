@@ -1,4 +1,4 @@
-import type { NoteDuration, Staff, TimeSignature } from '../../types/musicTypes'
+import type { Note, NoteDuration, Staff, TimeSignature } from '../../types/musicTypes'
 import { getNoteDurationBeats } from './music-helpers'
 
 export interface Box {
@@ -11,11 +11,26 @@ export interface Box {
 export interface SubdivisionBox extends Box {
   offset: number;          // e.g., 0, 0.25, 0.5, 0.75
   durationValue: number;   // e.g., 0.25 for a sixteenth note slot
+  exactCenter: number;     // The visual center for this slice
+}
+
+export interface ElementBox extends Box {
+  id: string; // the note.id
+  type: 'note' | 'rest';
+  exactCenter: number; // The visual center to paint the glyph
+  pitch?: string;
+  octave?: number;
+  duration: NoteDuration | string;
+  note: Note; // The original note reference
+  visualOffsetX?: number;
+  visualOffsetY?: number;
+  subdivisionOffset: number;
 }
 
 export interface BeatBox extends Box {
   index: number;
   subdivisions: SubdivisionBox[];
+  elements: ElementBox[]; // Pre-computed elements placed in this beat
 }
 
 export interface BarBox extends Box {
@@ -61,10 +76,7 @@ export function calculateStaffLayout(
     const timeSig = bar.timeSignature || staff.timeSignature || { beatsPerMeasure: 4, beatValue: 4, display: '4/4' };
     const beatsCount = bar.beats.length || timeSig.beatsPerMeasure;
     
-    // In the future, this is where we calculate DYNAMIC barWidths 
-    // by scanning `bar.beats` content. For now, we enforce static block width.
-    const currentBarWidth = config.barWidth; 
-    
+    const currentBarWidth = config.barWidth;
     const innerX = currentX + config.barPadding;
     const innerWidth = currentBarWidth - (config.barPadding * 2);
     const beatWidth = innerWidth / beatsCount;
@@ -75,21 +87,58 @@ export function calculateStaffLayout(
       const beatStartX = innerX + (beatIndex * beatWidth);
       
       // Common sub-grids: 4 sixteenths per quarter beat
-      // If we need dynamic subdivisions based on the notes in the beat, we map them here
       const subdivisions: SubdivisionBox[] = [];
       const slices = 4; // Assuming min resolution of 16th notes for standard grid
       const sliceWidth = beatWidth / slices;
       const sliceDur = (4 / timeSig.beatValue) / slices; // e.g. 0.25 beats for sixteenth
 
       for (let s = 0; s < slices; s++) {
+        const sliceX = beatStartX + (s * sliceWidth);
         subdivisions.push({
-          x: beatStartX + (s * sliceWidth),
+          x: sliceX,
           y: config.staffTop,
           width: sliceWidth,
           height: config.staffHeight,
           offset: s * sliceDur,
-          durationValue: sliceDur
+          durationValue: sliceDur,
+          exactCenter: sliceX + (sliceWidth / 2)
         });
+      }
+
+      // Map any notes belonging to this beat into pre-calculated layout boxes
+      const elements: ElementBox[] = [];
+      const originalBeat = bar.beats[beatIndex];
+      
+      if (originalBeat && originalBeat.notes) {
+        for (const note of originalBeat.notes) {
+          const isRest = (note as any).type === 'rest';
+          const durBeats = getNoteDurationBeats(note.duration);
+          const unitsTaken = durBeats / (4 / timeSig.beatValue);
+          
+          const startX = beatStartX + ((note.subdivisionOffset || 0) * beatWidth);
+          // Block width calculations directly map mathematically into the exact layout grid
+          const blockWidth = beatWidth * unitsTaken;
+          
+          // Pure, universal center math. Applies equally to halves, quarters, rests, whatever 
+          const exactCenter = startX + (blockWidth / 2);
+
+          elements.push({
+            id: note.id,
+            type: isRest ? 'rest' : 'note',
+            x: startX,
+            y: config.staffTop,
+            width: blockWidth,
+            height: config.staffHeight,
+            exactCenter: exactCenter + (note.visualOffsetX || 0),
+            duration: note.duration,
+            pitch: note.pitch,
+            octave: note.octave,
+            note: note,
+            visualOffsetX: note.visualOffsetX,
+            visualOffsetY: note.visualOffsetY,
+            subdivisionOffset: note.subdivisionOffset || 0
+          });
+        }
       }
 
       beatBoxes.push({
@@ -98,7 +147,8 @@ export function calculateStaffLayout(
         y: config.staffTop,
         width: beatWidth,
         height: config.staffHeight,
-        subdivisions
+        subdivisions,
+        elements
       });
     }
 
@@ -126,21 +176,14 @@ export function calculateStaffLayout(
 }
 
 /**
- * Gets exact glyph placement center inside the hierarchy.
- * @param layout The pre-calculated strict layout
- * @param barIndex 
- * @param beatIndex 
- * @param subdivisionOffset 
- * @param noteDuration 
- * @returns 
+ * Gets exact placement for non-saved elements (hovers/ghosts) outside the main layout payload.
  */
-export function getGlyphX(
+export function getTransientLayoutCenter(
   layout: StaffLayout,
   barIndex: number,
   beatIndex: number,
   subdivisionOffset: number,
-  noteDuration: NoteDuration | string,
-  visualOffset: number = 0
+  noteDuration: NoteDuration | string
 ): number {
   const bar = layout.bars[barIndex];
   if (!bar) return 0;
@@ -151,11 +194,10 @@ export function getGlyphX(
   const timeSigValue = bar.timeSignature.beatValue;
   const durBeats = getNoteDurationBeats(noteDuration as NoteDuration);
   const unitsTaken = durBeats / (4 / timeSigValue);
-  const noteWidth = beat.width * unitsTaken;
-
-  const isWhole = noteDuration === 'whole';
-  const startX = beat.x + (subdivisionOffset * beat.width);
   
+  const startX = beat.x + (subdivisionOffset * beat.width);
+  const blockWidth = beat.width * unitsTaken;
+
   // Box centering math:
-  return (isWhole ? bar.x + bar.width * 0.5 : startX + 15) + visualOffset;
+  return startX + (blockWidth / 2);
 }

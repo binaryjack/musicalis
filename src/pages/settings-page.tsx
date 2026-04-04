@@ -11,18 +11,8 @@ interface SettingsPageProps {
 
 export const SettingsPage = ({ onBack }: SettingsPageProps) => {
   const { settings, updateSettings, resetSettings } = useSettings();
-  const [hasChanges, setHasChanges] = useState(false);
   const [activeTab, setActiveTab] = useState<SettingsTab>('general');
-
-  const handleSave = () => {
-    // Settings are auto-saved via Redux, just update UI
-    setHasChanges(false);
-  };
-
-  const handleReset = () => {
-    resetSettings();
-    setHasChanges(false);
-  };
+  const [hasChanges, setHasChanges] = useState(false);
 
   return (
     <div style={{ minHeight: '100vh', backgroundColor: '#1a1a1a', color: '#f0f0f0' }}>
