@@ -1,0 +1,48 @@
+.panel {
+  border: 1px solid #444;
+  border-radius: 4px;
+  margin-bottom: 1rem;
+  background-color: #2a2a2a;
+  transition: all 0.3s ease-in-out;
+  overflow: hidden;
+}
+
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.5rem 1rem;
+  cursor: pointer;
+  background-color: #333;
+  user-select: none;
+}
+
+.header h3 {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.toggleIcon {
+  font-size: 0.8rem;
+  transition: transform 0.2s ease-in-out;
+}
+
+.panel.closed .toggleIcon {
+  transform: rotate(-90deg);
+}
+
+.content {
+  padding: 1rem;
+  border-top: 1px solid #444;
+  transition: max-height 0.3s ease-in-out, padding 0.3s ease-in-out;
+  max-height: 1000px; /* Set to a large enough value */
+  overflow-y: auto;
+}
+
+.panel.closed .content {
+  max-height: 0;
+  padding-top: 0;
+  padding-bottom: 0;
+  border-top: none;
+}

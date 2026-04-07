@@ -6,3 +6,4 @@ export * from "./playback-bar";
 export * from "./velocity-control";
 export * from "./RestSelector/RestSelector";
 export * from "./MusicalElementSelector/MusicalElementSelector";
+export * from './collapsible-panel';

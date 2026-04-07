@@ -11,7 +11,6 @@ interface BtEventsProps {
   layout: StaffLayout;
   staff: Staff;
   mode: 'design' | 'playback';
-  zoom: number;
   height: number;
   RenderConfig: any;
   selectedDuration: NoteDuration | string;
@@ -34,32 +33,36 @@ interface BtEventsProps {
 
   getYToPitch: (y: number) => { pitch: string; octave: number };
   getHitNote: (x: number, y: number) => any;
-  canvasRef: React.RefObject<HTMLCanvasElement | null>;
+  svgRef: React.RefObject<SVGSVGElement | null>;
   setHighlightedSubdivision: React.Dispatch<React.SetStateAction<HoveredSubdivision | null>>;
   setHoverGhost: React.Dispatch<React.SetStateAction<{ pitch: string; octave: number; duration: string; barIndex: number; beatIndex: number; subdivisionOffset: number } | null>>;
+  setSustainRange: React.Dispatch<React.SetStateAction<{ barIndex: number; startX: number; endX: number } | null>>;
+  onResizeDuration?: (staffId: string, barIndex: number, beatIndex: number, noteId: string, newDuration: NoteDuration) => void;
 }
 
 export const useStaffBtEvents = (props: BtEventsProps) => {
   const {
-    layout, staff, mode, zoom, height, RenderConfig,
+    layout, staff, mode, height, RenderConfig,
     selectedDuration, selectedRest, selectedTool,
     draggedNote, setDraggedNote,
     hoveredButton, setHoveredButton,
     setIsDraggingPlayhead,
     onAddBar, onRemoveBar, onPlayheadChange,
     onAddNote, onRemoveNote, onMoveNote, onSelectNote,
-    getYToPitch, getHitNote, canvasRef,
-    setHighlightedSubdivision, setHoverGhost
+    getYToPitch, getHitNote, svgRef,
+    setHighlightedSubdivision, setHoverGhost, setSustainRange, onResizeDuration,
   } = props;
 
   const mouseStateRef = useRef<MouseState>({
     x: 0, y: 0,
     isDown: false, isPressed: false, isUp: false,
-    isCtrlDown: false, button: null
+    isCtrlDown: false, isShiftDown: false, button: null
   });
 
   const isDraggingRef = useRef(false);
   const dragSourceNoteIdRef = useRef<string | null>(null);
+  const isSustainModeRef = useRef(false);
+  const sustainSourceRef = useRef<{ barIndex: number; beatIndex: number; note: Note } | null>(null);
 
   const getGeometry = (x: number, y: number) => {
     const barStartX = layout.clefPadding;
@@ -70,7 +73,7 @@ export const useStaffBtEvents = (props: BtEventsProps) => {
     let hoveredBar = null;
     let hoveredSubdivision: HoveredSubdivision | null = null;
 
-    if (x >= barStartX && x < finalBarX && y >= staffTop - 40 && y <= staffTop + barHeight + 40) {
+    if (x >= barStartX && x < finalBarX) {
       // Find which bar we are in
       const barBox = layout.bars.find(b => x >= b.x && x < b.x + b.width);
       
@@ -114,7 +117,10 @@ export const useStaffBtEvents = (props: BtEventsProps) => {
 
               const beat = staff.bars[barBox.index]?.beats[beatBox.index];
               if (beat) {
-                const noteAtPos = beat.notes.find(n => (n.subdivisionOffset || 0) === selectedSubdiv.offset);
+                const noteAtPos = beat.notes.find(n =>
+                  (n.subdivisionOffset || 0) === selectedSubdiv.offset &&
+                  n.id !== dragSourceNoteIdRef.current
+                );
                 if (noteAtPos) {
                   if ((noteAtPos as any).type === 'rest') hasRest = true;
                   else hasNote = true;
@@ -139,13 +145,17 @@ export const useStaffBtEvents = (props: BtEventsProps) => {
     return { barStartX, finalBarX, staffTop, barHeight, hoveredBar, hoveredSubdivision, beatsPerBar: layout.bars[0]?.beats.length || 4 };
   };
 
-  const processTick = (event: React.MouseEvent<HTMLCanvasElement>, mouseEventType: 'down' | 'up' | 'move') => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-
-    const rect = canvas.getBoundingClientRect();
-    const x = (event.clientX - rect.left) / zoom;
-    const y = (event.clientY - rect.top) / zoom;
+  const processTick = (event: React.MouseEvent<SVGSVGElement>, mouseEventType: 'down' | 'up' | 'move') => {
+    const svgEl = svgRef.current;
+    if (!svgEl) return;
+    const pt = svgEl.createSVGPoint();
+    pt.x = event.clientX;
+    pt.y = event.clientY;
+    const ctm = svgEl.getScreenCTM();
+    if (!ctm) return;
+    const svgCoords = pt.matrixTransform(ctm.inverse());
+    const x = svgCoords.x;
+    const y = svgCoords.y;
     
     // Update raw mouse state
     const prevDown = mouseStateRef.current.isDown;
@@ -156,33 +166,35 @@ export const useStaffBtEvents = (props: BtEventsProps) => {
       isPressed: mouseEventType === 'down',
       isUp: mouseEventType === 'up',
       isCtrlDown: event.ctrlKey || event.metaKey,
+      isShiftDown: event.shiftKey,
       button: isDown ? 0 : null
     };
 
     const geometry = getGeometry(x, y);
     const hitNote = getHitNote(x, y);
-    
-    // Check buttons (add/remove bar) - Handle these outside the tree for simplicity
-    // unless we add them to the Tree (currently tree is "Staff Interactions")
-    if (mouseEventType === 'move') {
-      const addButtonRadius = (geometry.barHeight * 0.7) / 2;
-      const addButtonCenterX = geometry.finalBarX + 4 + addButtonRadius;
-      const addButtonCenterY = geometry.staffTop + (geometry.barHeight / 2);
-      const removeButtonRadius = addButtonRadius * 0.6;
-      const removeButtonCenterX = addButtonCenterX + addButtonRadius + 8;
-      const removeButtonCenterY = geometry.staffTop + removeButtonRadius + 4;
-      
-      const distToAdd = Math.sqrt(Math.pow(x - addButtonCenterX, 2) + Math.pow(y - addButtonCenterY, 2));
-      const distToRemove = Math.sqrt(Math.pow(x - removeButtonCenterX, 2) + Math.pow(y - removeButtonCenterY, 2));
-      
-      let hoverAdd = distToAdd <= addButtonRadius && x >= geometry.finalBarX + 4;
-      let hoverRemove = staff.bars.length > 1 && distToRemove <= removeButtonRadius;
-      
-      setHoveredButton(hoverAdd ? 'add' : hoverRemove ? 'remove' : null);
-    } else if (mouseEventType === 'down') {
-      if (hoveredButton === 'add') { onAddBar?.(staff.id, staff.bars.length - 1); return; }
-      if (hoveredButton === 'remove') { onRemoveBar?.(staff.id, staff.bars.length - 1); return; }
-    }
+
+    // Compute bar-button hover geometry — fed into TickContext so the BT handles clicks.
+    // We also call setHoveredButton for canvas visual rendering.
+    const addButtonRadius = (geometry.barHeight * 0.7) / 2;
+    const addButtonCenterX = geometry.finalBarX + 4 + addButtonRadius;
+    const addButtonCenterY = geometry.staffTop + (geometry.barHeight / 2);
+    const removeButtonRadius = addButtonRadius * 0.6;
+    const removeButtonCenterX = addButtonCenterX + addButtonRadius + 8;
+    const distToAdd    = Math.sqrt(Math.pow(x - addButtonCenterX, 2)    + Math.pow(y - addButtonCenterY, 2));
+    const distToRemove = Math.sqrt(Math.pow(x - removeButtonCenterX, 2) + Math.pow(y - (geometry.staffTop + removeButtonRadius + 4), 2));
+    const nextHoveredButton: 'add' | 'remove' | null =
+      distToAdd <= addButtonRadius && x >= geometry.finalBarX + 4 ? 'add' :
+      staff.bars.length > 1 && distToRemove <= removeButtonRadius ? 'remove' :
+      null;
+    setHoveredButton(nextHoveredButton);
+
+    // Off-canvas: dragged note released far outside the full pitch range (C2–C8).
+    // staffTop is F6; each diatonic step = ls/2. C8 = 11 steps above, C2 = 31 steps below.
+    const ls = RenderConfig.staffLineSpacing;
+    const highestNoteY = geometry.staffTop - 11 * (ls / 2); // C8
+    const lowestNoteY  = geometry.staffTop + 31 * (ls / 2); // C2
+    const isOffCanvas = isDraggingRef.current &&
+      (y < highestNoteY - 60 || y > lowestNoteY + 60);
 
     const { pitch, octave } = getYToPitch(y);
 
@@ -191,7 +203,7 @@ export const useStaffBtEvents = (props: BtEventsProps) => {
       mode,
       selectedStaffId: staff.id,
       selectedNoteId: hitNote?.note.id || null,
-      selectedElementId: null, // If there's an active global selection
+      selectedElementId: null,
       cursorPosition: x,
       hoveredBar: geometry.hoveredBar,
       hoveredSubdivision: geometry.hoveredSubdivision,
@@ -199,7 +211,9 @@ export const useStaffBtEvents = (props: BtEventsProps) => {
       isNoteToolActive: mode === 'design' && (!selectedRest) && (!selectedTool || selectedTool.type === 'note'),
       isDragging: isDraggingRef.current,
       dragSourceNoteId: dragSourceNoteIdRef.current,
-      isSustainMode: false,
+      isSustainMode: isSustainModeRef.current,
+      hoveredButton: nextHoveredButton,
+      isOffCanvas,
       timestamp: Date.now(),
       commands: []
     };
@@ -213,6 +227,14 @@ export const useStaffBtEvents = (props: BtEventsProps) => {
 
     for (const cmd of ctx.commands) {
       switch (cmd.type) {
+        case 'bar.add': {
+          onAddBar?.(staff.id, staff.bars.length - 1);
+          break;
+        }
+        case 'bar.remove': {
+          onRemoveBar?.(staff.id, staff.bars.length - 1);
+          break;
+        }
         case 'subdivision.highlight': {
           isSubdivHighlighted = true;
           break;
@@ -231,10 +253,8 @@ export const useStaffBtEvents = (props: BtEventsProps) => {
         }
         case 'note.add': {
           if (!geometry.hoveredSubdivision) break;
-          const { barIndex, beatIndex, subdivOffset } = geometry.hoveredSubdivision;
-          const targetBeatIndex = beatIndex + (subdivOffset || 0);
-          console.log("ADDING", mouseEventType, mouseStateRef.current.isPressed);
-          onAddNote?.(staff.id, barIndex, targetBeatIndex, pitch, octave, ctx.selectedDuration as NoteDuration);
+          const { barIndex, beatIndex } = geometry.hoveredSubdivision; // beatIndex already includes subdivOffset
+          onAddNote?.(staff.id, barIndex, beatIndex, pitch, octave, ctx.selectedDuration as NoteDuration);
           break;
         }
         case 'rest.deleteAtPosition': {
@@ -258,7 +278,7 @@ export const useStaffBtEvents = (props: BtEventsProps) => {
           isDraggingRef.current = false;
           dragSourceNoteIdRef.current = null;
           if (draggedNote && geometry.hoveredSubdivision) {
-             const targetBeatIndex = geometry.hoveredSubdivision.beatIndex + (geometry.hoveredSubdivision.subdivOffset || 0);     
+             const targetBeatIndex = geometry.hoveredSubdivision.beatIndex; // already includes subdivOffset
              if (draggedNote.barIndex !== geometry.hoveredSubdivision.barIndex ||
                  (draggedNote.beatIndex + (draggedNote.note.subdivisionOffset||0)) !== targetBeatIndex ||
                  draggedNote.note.pitch !== pitch || draggedNote.note.octave !== octave) {
@@ -269,14 +289,66 @@ export const useStaffBtEvents = (props: BtEventsProps) => {
           setDraggedNote(null);
           break;
         }
+        case 'note.deleteDrag': {
+          isDraggingRef.current = false;
+          dragSourceNoteIdRef.current = null;
+          if (draggedNote) onRemoveNote?.(staff.id, draggedNote.barIndex, draggedNote.beatIndex, draggedNote.note.id);
+          setDraggedNote(null);
+          break;
+        }
         case 'note.cancelDrag': {
           isDraggingRef.current = false;
           dragSourceNoteIdRef.current = null;
           setDraggedNote(null);
-          // Detect drop off-canvas for deletion
-          if (y < geometry.staffTop - 60 || y > geometry.staffTop + geometry.barHeight + 60) {
-             if (draggedNote) onRemoveNote?.(staff.id, draggedNote.barIndex, draggedNote.beatIndex, draggedNote.note.id);
+          break;
+        }
+        case 'sustain.begin': {
+          if (!isSustainModeRef.current && hitNote) {
+            isSustainModeRef.current = true;
+            sustainSourceRef.current = {
+              barIndex: hitNote.barIndex,
+              beatIndex: hitNote.beatIndex,
+              note: hitNote.note,
+            };
           }
+          break;
+        }
+        case 'sustain.highlightRange': {
+          if (sustainSourceRef.current) {
+            const srcNote = sustainSourceRef.current.note;
+            const srcBar = layout.bars[sustainSourceRef.current.barIndex];
+            const srcBeat = srcBar?.beats.find(b => b.index === srcNote.beatIndex);
+            const srcEl = srcBeat?.elements.find(el => el.note?.id === srcNote.id);
+            if (srcEl) {
+              const clampedX = Math.max(srcEl.x, Math.min(x, srcBar.x + srcBar.width));
+              setSustainRange({ barIndex: sustainSourceRef.current.barIndex, startX: srcEl.x, endX: clampedX });
+            }
+          }
+          break;
+        }
+        case 'sustain.commit': {
+          isSustainModeRef.current = false;
+          setSustainRange(null);
+          if (sustainSourceRef.current && geometry.hoveredSubdivision &&
+              geometry.hoveredSubdivision.barIndex === sustainSourceRef.current.barIndex) {
+            const src = sustainSourceRef.current;
+            const sourceBeat = src.note.beatIndex + (src.note.subdivisionOffset || 0);
+            const targetBeat = geometry.hoveredSubdivision.beatIndex;
+            const spanBeats = targetBeat - sourceBeat;
+            if (spanBeats > 0.1) {
+              const durMap: [NoteDuration, number][] = [
+                ['whole', 4], ['half', 2], ['quarter', 1], ['eighth', 0.5], ['sixteenth', 0.25],
+              ];
+              let newDur: NoteDuration = 'quarter';
+              let best = Infinity;
+              for (const [d, v] of durMap) {
+                const dist = Math.abs(spanBeats - v);
+                if (dist < best) { best = dist; newDur = d; }
+              }
+              onResizeDuration?.(staff.id, src.barIndex, src.note.beatIndex, src.note.id, newDur);
+            }
+          }
+          sustainSourceRef.current = null;
           break;
         }
         case 'playhead.set': {
@@ -317,29 +389,32 @@ export const useStaffBtEvents = (props: BtEventsProps) => {
   };
 
   return {
-    handleCanvasClick: () => {}, // We handle inside down/up since click is synthetic
-    handleMouseDown: (e: React.MouseEvent<HTMLCanvasElement>) => processTick(e, 'down'),
-    handleMouseMove: (e: React.MouseEvent<HTMLCanvasElement>) => {
-      // Small fast-path for drag updates visually
+    handleMouseDown: (e: React.MouseEvent<SVGSVGElement>) => processTick(e, 'down'),
+    handleMouseMove: (e: React.MouseEvent<SVGSVGElement>) => {
+      // Fast-path: update dragged note position without full tick
       if (isDraggingRef.current && draggedNote) {
-        const canvas = canvasRef.current;
-        if (canvas) {
-           const rect = canvas.getBoundingClientRect();
-           setDraggedNote({
-             ...draggedNote,
-             currentX: (e.clientX - rect.left) / zoom,
-             currentY: (e.clientY - rect.top) / zoom
-           });
+        const svgEl = svgRef.current;
+        if (svgEl) {
+          const pt = svgEl.createSVGPoint();
+          pt.x = e.clientX; pt.y = e.clientY;
+          const ctm = svgEl.getScreenCTM();
+          if (ctm) {
+            const { x: cx, y: cy } = pt.matrixTransform(ctm.inverse());
+            setDraggedNote({ ...draggedNote, currentX: cx, currentY: cy });
+          }
         }
       }
-      processTick(e, 'move')
+      processTick(e, 'move');
     },
-    handleMouseUp: (e: React.MouseEvent<HTMLCanvasElement>) => processTick(e, 'up'),
+    handleMouseUp: (e: React.MouseEvent<SVGSVGElement>) => processTick(e, 'up'),
     handleMouseLeave: () => {
       setHoveredButton(null);
       setIsDraggingPlayhead(false);
       if (draggedNote) setDraggedNote(null);
       isDraggingRef.current = false;
+      isSustainModeRef.current = false;
+      sustainSourceRef.current = null;
+      setSustainRange(null);
     }
   };
 ;

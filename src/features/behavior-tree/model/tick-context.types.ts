@@ -7,6 +7,7 @@ export interface MouseState {
   /** true on the first frame of a mouse-up (release) */
   isUp: boolean;
   isCtrlDown: boolean;
+  isShiftDown: boolean;
   button: number | null;
 }
 
@@ -54,13 +55,17 @@ export interface TickContext {
   dragSourceNoteId: string | null;
   /** True while a ctrl+drag sustain/beam operation is in progress */
   isSustainMode: boolean;
+  /** Which bar-management button the cursor is currently over, if any */
+  hoveredButton: 'add' | 'remove' | null;
+  /** True when an active drag is outside the staff vertical bounds */
+  isOffCanvas: boolean;
   timestamp: number;
   /** Queue of commands resulting from behavior tree actions */
   commands: TickCommand[];
 }
 
 export const emptyTickContext = (): TickContext => ({
-  mouse: { x: 0, y: 0, isDown: false, isPressed: false, isUp: false, isCtrlDown: false, button: null },
+  mouse: { x: 0, y: 0, isDown: false, isPressed: false, isUp: false, isCtrlDown: false, isShiftDown: false, button: null },
   mode: 'design',
   selectedStaffId: null,
   selectedNoteId: null,
@@ -73,6 +78,8 @@ export const emptyTickContext = (): TickContext => ({
   isDragging: false,
   dragSourceNoteId: null,
   isSustainMode: false,
+  hoveredButton: null,
+  isOffCanvas: false,
   timestamp: 0,
   commands: [],
 });

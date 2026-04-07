@@ -71,6 +71,12 @@ export const defaultRegistry: BTRegistry = {
       description: 'True while Ctrl key is held with the mouse',
       fn: (ctx) => ctx.mouse.isCtrlDown,
     },
+    'mouse.isShiftDown': {
+      key: 'mouse.isShiftDown',
+      label: 'Shift Is Down',
+      description: 'True while Shift key is held — activates drag/select mode',
+      fn: (ctx) => ctx.mouse.isShiftDown,
+    },
     'mouse.isUp': {
       key: 'mouse.isUp',
       label: 'Mouse Released',
@@ -107,11 +113,35 @@ export const defaultRegistry: BTRegistry = {
       description: 'True while a note drag operation is in progress',
       fn: (ctx) => ctx.isDragging,
     },
+    'note.isNotDragging': {
+      key: 'note.isNotDragging',
+      label: 'Note Is Not Dragging',
+      description: 'True when no drag is in progress — guards the begin-drag sequence',
+      fn: (ctx) => !ctx.isDragging,
+    },
     'sustain.isActive': {
       key: 'sustain.isActive',
       label: 'Sustain Mode Active',
       description: 'True while a Ctrl+drag beam/sustain operation is in progress',
       fn: (ctx) => ctx.isSustainMode,
+    },
+    'button.isAddHovered': {
+      key: 'button.isAddHovered',
+      label: 'Add-Bar Button Hovered',
+      description: 'True when the cursor is over the add-bar button',
+      fn: (ctx) => ctx.hoveredButton === 'add',
+    },
+    'button.isRemoveHovered': {
+      key: 'button.isRemoveHovered',
+      label: 'Remove-Bar Button Hovered',
+      description: 'True when the cursor is over the remove-bar button',
+      fn: (ctx) => ctx.hoveredButton === 'remove',
+    },
+    'note.isOffCanvas': {
+      key: 'note.isOffCanvas',
+      label: 'Dragged Note Is Off Canvas',
+      description: 'True when the dragged note is released outside the staff vertical bounds',
+      fn: (ctx) => ctx.isOffCanvas,
     },
   },
 
@@ -226,8 +256,8 @@ export const defaultRegistry: BTRegistry = {
     'sustain.begin': {
       key: 'sustain.begin',
       label: 'Begin Sustain Mode',
-      description: 'Start a Ctrl+drag beam/sustain — sets isSustainMode. Returns RUNNING while held.',
-      fn: () => NODE_STATUS.RUNNING,
+      description: 'Start a Ctrl+drag beam/sustain — sets isSustainMode on first tick, returns SUCCESS so the sequence continues to highlightRange.',
+      fn: () => NODE_STATUS.SUCCESS,
     },
     'sustain.highlightRange': {
       key: 'sustain.highlightRange',
@@ -239,6 +269,12 @@ export const defaultRegistry: BTRegistry = {
       key: 'sustain.commit',
       label: 'Commit Sustain',
       description: 'On mouse-up: replace covered notes with beamed/sustained note. Cancels if off-staff.',
+      fn: () => NODE_STATUS.SUCCESS,
+    },
+    'note.deleteDrag': {
+      key: 'note.deleteDrag',
+      label: 'Delete Dragged Note',
+      description: 'Cancel drag and permanently remove the source note (dropped off canvas).',
       fn: () => NODE_STATUS.SUCCESS,
     },
   },

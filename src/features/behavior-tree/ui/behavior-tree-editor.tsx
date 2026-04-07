@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef, useCallback } from 'react';
 import type { NodeType } from '../model/node.types';
 import { NODE_TYPE } from '../model/node.types';
 import { useBtEditor } from '../hooks/use-bt-editor';
@@ -15,6 +15,26 @@ export const BehaviorTreeEditor = () => {
   const editor = useBtEditor();
   const [newTreeName, setNewTreeName] = useState('');
   const [showNewTree, setShowNewTree] = useState(false);
+  const [inspectorWidth, setInspectorWidth] = useState(200);
+  const splitResizing = useRef(false);
+
+  const handleSplitResizeStart = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    splitResizing.current = true;
+    const startX = e.clientX;
+    const startW = inspectorWidth;
+    const onMove = (ev: MouseEvent) => {
+      if (!splitResizing.current) return;
+      setInspectorWidth(Math.max(120, Math.min(480, startW + (startX - ev.clientX))));
+    };
+    const onUp = () => {
+      splitResizing.current = false;
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+    };
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+  }, [inspectorWidth]);
 
   const selectedIsComposite = editor.selectedNode
     ? canHaveChildren(editor.selectedNode.type)
@@ -29,7 +49,6 @@ export const BehaviorTreeEditor = () => {
       color: '#e0e0e0',
       fontFamily: 'monospace',
       border: '1px solid #333',
-      borderRadius: '8px',
       overflow: 'hidden',
     }}>
 
@@ -37,11 +56,12 @@ export const BehaviorTreeEditor = () => {
       <div style={{
         display: 'flex',
         alignItems: 'center',
-        gap: '8px',
-        padding: '8px 12px',
+        gap: '4px',
+        padding: '2px 4px',
         backgroundColor: '#252525',
-        borderBottom: '1px solid #444',
+        borderBottom: '1px solid #333',
         flexShrink: 0,
+        flexWrap: 'wrap',
       }}>
         <span style={{ fontWeight: 'bold', color: '#4a9eff', fontSize: '14px' }}>🌳 Behavior Trees</span>
 
@@ -109,7 +129,7 @@ export const BehaviorTreeEditor = () => {
 
       {/* ─── JSON Mode ───────────────────────────── */}
       {editor.jsonMode ? (
-        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', padding: '12px', gap: '8px' }}>
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', padding: '2px', gap: '2px' }}>
           <textarea
             value={editor.jsonDraft}
             onChange={e => editor.setJsonDraft(e.target.value)}
@@ -144,7 +164,7 @@ export const BehaviorTreeEditor = () => {
         <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
 
           {/* Left: Tree View */}
-          <div style={{ flex: 1, overflowY: 'auto', borderRight: '1px solid #444' }}>
+          <div style={{ flex: 1, overflowY: 'auto', borderRight: '1px solid #333' }}>
             {editor.activeTree ? (
               <TreeNodeView
                 node={editor.activeTree.root}
@@ -157,12 +177,26 @@ export const BehaviorTreeEditor = () => {
                 onDelete={editor.deleteNode}
               />
             ) : (
-              <div style={{ padding: '24px', color: '#666', fontSize: '13px' }}>No tree selected</div>
+              <div style={{ padding: '4px', color: '#666', fontSize: '12px' }}>No tree selected</div>
             )}
           </div>
 
+          {/* Resize handle between tree and inspector */}
+          <div
+            onMouseDown={handleSplitResizeStart}
+            style={{
+              width: '4px',
+              cursor: 'col-resize',
+              backgroundColor: '#2a2a2a',
+              flexShrink: 0,
+              transition: 'background-color 0.15s',
+            }}
+            onMouseEnter={e => (e.currentTarget.style.backgroundColor = '#4a9eff')}
+            onMouseLeave={e => (e.currentTarget.style.backgroundColor = '#2a2a2a')}
+          />
+
           {/* Right: Inspector */}
-          <div style={{ width: '260px', flexShrink: 0, overflowY: 'auto' }}>
+          <div style={{ width: `${inspectorWidth}px`, flexShrink: 0, overflowY: 'auto' }}>
             <NodeInspector
               node={editor.selectedNode ?? null}
               onChange={editor.updateNode}
