@@ -74,10 +74,6 @@ export const DEFAULT_TREE: BTTreeDef = {
         children: [
           { id: 'c-drag-active', type: 'condition', label: 'Is Dragging',     conditionKey: 'note.isDragging' },
           { id: 'c-drag-up',     type: 'condition', label: 'Mouse Released',  conditionKey: 'mouse.isUp' },
-          {
-            id: 'd-drag-guard', type: 'decorator', label: 'No Note At Target', decoratorType: 'invert',
-            children: [{ id: 'c-drag-occupied', type: 'condition', label: 'Position Has Note', conditionKey: 'position.hasNote' }],
-          },
           { id: 'a-drag-rest-del', type: 'action', label: 'Delete Rest',  actionKey: 'rest.deleteAtPosition' },
           { id: 'a-drag-commit',   type: 'action', label: 'Commit Drag',  actionKey: 'note.commitDrag' },
           { id: 'a-drag-sound',    type: 'action', label: 'Play Sound',   actionKey: 'note.playSound' },
